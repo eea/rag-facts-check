@@ -289,8 +289,8 @@ class MockLLM(LLM):
         claim_match = re.search(r'Claim:\s*\n(.+?)\n\nSource Documents:', prompt, re.DOTALL)
         claim = claim_match.group(1).strip() if claim_match else "unknown claim"
 
-        # Extract documents from prompt
-        docs_match = re.search(r'Source Documents:\s*\n(.+?)\n\nInstructions:', prompt, re.DOTALL)
+        # Extract documents from prompt (handles both standard and evidence-first formats)
+        docs_match = re.search(r'Source Documents:\s*\n(.+?)(?:\n\nInstructions:|\n\nStep 1:|\Z)', prompt, re.DOTALL)
         docs_text = docs_match.group(1).strip() if docs_match else ""
 
         # Simple keyword-based mock verification

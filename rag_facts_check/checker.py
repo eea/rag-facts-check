@@ -1,9 +1,17 @@
 """
 Core fact-checking pipeline: claim extraction, per-claim verification,
 and result aggregation.
+
+Enhancements over the base implementation:
+- Evidence retrieval per claim (reduces context, improves accuracy)
+- Evidence-first multi-step prompting (reduces hallucinated evaluations)
+- Self-consistency (multiple verification runs with different temperatures)
+- Multi-dimensional scoring (groundedness, contradiction_rate, etc.)
+- Span-level verification (document_id and chunk_id in results)
 """
 
 import re
+from collections import Counter
 from typing import List, Optional
 
 from .models import Claim, VerificationResult, CheckReport
@@ -11,8 +19,10 @@ from .llm import LLM
 from .prompts import (
     format_claim_extraction_prompt,
     format_claim_verification_prompt,
+    format_claim_verification_evidence_first_prompt,
     format_documents,
 )
+from .retriever import EvidenceRetriever, DocumentChunk
 
 
 class ClaimExtractor:
@@ -74,8 +84,10 @@ class ClaimExtractor:
 class ClaimVerifier:
     """Verifies individual claims against a set of source documents.
 
-    For each claim, determines whether it is *supported*, *contradicted*,
-    or has *not enough info* based on the provided documents.
+    Supports:
+    - Evidence-first multi-step prompting
+    - Self-consistency (multiple runs with different temperatures)
+    - Evidence retrieval (only relevant document chunks are passed)
     """
 
     def __init__(
@@ -84,39 +96,138 @@ class ClaimVerifier:
         max_new_tokens: int = 512,
         max_docs_chars: int = 8000,
         max_chars_per_doc: int = 2000,
+        num_consistency_runs: int = 1,
+        evidence_first: bool = True,
     ):
+        """Initialize the claim verifier.
+
+        Args:
+            llm: LLM backend implementing the :class:`LLM` interface.
+            max_new_tokens: Max tokens for LLM generation.
+            max_docs_chars: Maximum total characters of documents to include.
+            max_chars_per_doc: Maximum characters per individual document.
+            num_consistency_runs: Number of verification runs for self-consistency.
+                If >1, runs verification multiple times with increasing temperatures
+                and aggregates via majority vote.
+            evidence_first: If True, use the evidence-first multi-step prompt.
+        """
         self.llm = llm
         self.max_new_tokens = max_new_tokens
         self.max_docs_chars = max_docs_chars
         self.max_chars_per_doc = max_chars_per_doc
+        self.num_consistency_runs = num_consistency_runs
+        self.evidence_first = evidence_first
 
-    def verify(self, claim: Claim, documents: List[str]) -> VerificationResult:
+    def verify(
+        self,
+        claim: Claim,
+        documents: List[str],
+        chunks: Optional[List[DocumentChunk]] = None,
+    ) -> VerificationResult:
         """Verify a single claim against the source documents.
 
         Args:
             claim: The claim to verify.
             documents: List of source document strings.
+            chunks: Pre-retrieved relevant document chunks. If provided,
+                only these chunks are used for verification.
 
         Returns:
             :class:`VerificationResult` with verdict, confidence, evidence,
             and explanation.
         """
-        formatted_docs = format_documents(
-            documents,
-            max_chars_per_doc=self.max_chars_per_doc,
-            max_total_chars=self.max_docs_chars,
-        )
+        # Determine which documents to use
+        if chunks is not None:
+            docs_to_verify = [c.text for c in chunks]
+        else:
+            docs_to_verify = documents
 
-        prompt = format_claim_verification_prompt(claim.text, documents)
+        # Self-consistency: run multiple times with different temperatures
+        if self.num_consistency_runs > 1:
+            results = []
+            for i in range(self.num_consistency_runs):
+                # Vary temperature: 0.1, 0.2, 0.3, etc.
+                temp = 0.1 + (i * 0.1)
+                result = self._single_verify(claim, docs_to_verify, temperature=temp)
+                results.append(result)
+            return self._aggregate_consistency(claim, chunks, results)
+        else:
+            return self._single_verify(claim, docs_to_verify, temperature=0.1)
+
+    def _single_verify(
+        self,
+        claim: Claim,
+        documents: List[str],
+        temperature: float = 0.1,
+    ) -> VerificationResult:
+        """Single verification pass."""
+        if self.evidence_first:
+            prompt = format_claim_verification_evidence_first_prompt(
+                claim.text, documents
+            )
+        else:
+            prompt = format_claim_verification_prompt(claim.text, documents)
+
         response = self.llm.generate(
             prompt,
             max_new_tokens=self.max_new_tokens,
-            temperature=0.1,
+            temperature=temperature,
         )
 
         return self._parse_result(claim, response)
 
-    def _parse_result(self, claim: Claim, response: str) -> VerificationResult:
+    def _aggregate_consistency(
+        self,
+        claim: Claim,
+        chunks: Optional[List[DocumentChunk]],
+        results: List[VerificationResult],
+    ) -> VerificationResult:
+        """Aggregate multiple verification results using majority vote.
+
+        - Verdict: majority vote
+        - Confidence: average of per-run confidences
+        - Evidence: from the result with the majority verdict
+        - Consistency score: fraction of runs that agree with the majority
+        """
+        verdicts = [r.verdict for r in results]
+        verdict_counts = Counter(verdicts)
+        majority_verdict, majority_count = verdict_counts.most_common(1)[0]
+
+        avg_confidence = int(sum(r.confidence for r in results) / len(results))
+
+        # Use evidence from the first result with the majority verdict
+        majority_result = next(
+            (r for r in results if r.verdict == majority_verdict), results[0]
+        )
+
+        # Extract document_id and chunk_id from evidence if available
+        doc_id = None
+        chunk_id = None
+        if chunks and majority_result.evidence and majority_result.evidence != "N/A":
+            for chunk in chunks:
+                if majority_result.evidence.strip('"').strip() in chunk.text or \
+                   chunk.text in majority_result.evidence:
+                    doc_id = chunk.doc_id
+                    chunk_id = str(chunk.chunk_id)
+                    break
+
+        consistency_score = majority_count / len(results)
+
+        return VerificationResult(
+            claim=claim.text,
+            claim_index=claim.index,
+            verdict=majority_verdict,
+            confidence=avg_confidence,
+            evidence=majority_result.evidence,
+            explanation=majority_result.explanation,
+            document_id=doc_id,
+            chunk_id=chunk_id,
+            consistency_score=consistency_score,
+        )
+
+    def _parse_result(
+        self, claim: Claim, response: str
+    ) -> VerificationResult:
         """Parse the LLM verification response into a structured result."""
         verdict = "not_enough_info"
         confidence = 50
@@ -147,7 +258,7 @@ class ClaimVerifier:
 
         # Parse EVIDENCE
         evidence_match = re.search(
-            r"EVIDENCE:\s*(.+?)(?:\n\n|\nEXPLANATION|\Z)",
+            r"EVIDENCE:\s*(.+?)(?:\n\n|\nEXPLANATION|\nVERDICT|\Z)",
             response,
             re.IGNORECASE | re.DOTALL,
         )
@@ -178,8 +289,9 @@ class RAGFactsChecker:
 
     Orchestrates the pipeline:
     1. Extract factual claims from the RAG answer
-    2. Verify each claim against the source documents
-    3. Aggregate results into a comprehensive report
+    2. Optionally retrieve relevant document chunks per claim
+    3. Verify each claim against the (retrieved) source documents
+    4. Aggregate results into a comprehensive report
 
     Example::
 
@@ -190,7 +302,7 @@ class RAGFactsChecker:
 
         report = checker.check(
             answer="Paris is the capital of France.",
-            documents=["Paris is the capital of France. It is known for the Eiffel Tower."],
+            documents=["Paris is the capital of France."],
         )
         print(report.to_dict())
     """
@@ -209,6 +321,10 @@ class RAGFactsChecker:
         max_new_tokens: int = 512,
         max_docs_chars: int = 8000,
         max_chars_per_doc: int = 2000,
+        num_consistency_runs: int = 1,
+        evidence_first: bool = True,
+        use_evidence_retrieval: bool = True,
+        retriever: Optional[EvidenceRetriever] = None,
     ):
         """Initialize the checker.
 
@@ -218,12 +334,24 @@ class RAGFactsChecker:
             max_new_tokens: Max tokens for LLM generation.
             max_docs_chars: Maximum total characters of documents to include.
             max_chars_per_doc: Maximum characters per individual document.
+            num_consistency_runs: Number of verification runs for self-consistency.
+                If >1, runs verification multiple times with different temperatures
+                and aggregates via majority vote.
+            evidence_first: If True, use the evidence-first multi-step prompt.
+            use_evidence_retrieval: If True, retrieve relevant document chunks
+                per claim before verification (reduces context, improves accuracy).
+            retriever: Custom :class:`EvidenceRetriever` instance. If None,
+                a default one is created.
         """
         self.llm = llm
         self.max_claims = max_claims
         self.max_new_tokens = max_new_tokens
         self.max_docs_chars = max_docs_chars
         self.max_chars_per_doc = max_chars_per_doc
+        self.num_consistency_runs = num_consistency_runs
+        self.evidence_first = evidence_first
+        self.use_evidence_retrieval = use_evidence_retrieval
+        self.retriever = retriever or EvidenceRetriever(top_k=3)
 
         self.extractor = ClaimExtractor(llm, max_new_tokens=max_new_tokens)
         self.verifier = ClaimVerifier(
@@ -231,6 +359,8 @@ class RAGFactsChecker:
             max_new_tokens=max_new_tokens,
             max_docs_chars=max_docs_chars,
             max_chars_per_doc=max_chars_per_doc,
+            num_consistency_runs=num_consistency_runs,
+            evidence_first=evidence_first,
         )
 
     def check(self, answer: str, documents: List[str]) -> CheckReport:
@@ -242,7 +372,7 @@ class RAGFactsChecker:
 
         Returns:
             :class:`CheckReport` with overall confidence, verdict, per-claim
-            results, and hallucination flags.
+            results, multi-dimensional scores, and hallucination flags.
         """
         # Step 1: Extract claims
         claims = self.extractor.extract(answer)
@@ -256,19 +386,35 @@ class RAGFactsChecker:
                 results=[],
                 summary="No factual claims were detected in the answer.",
                 hallucination_flags=[],
+                dimensions={
+                    "groundedness": 0.0,
+                    "contradiction_rate": 0.0,
+                    "hallucination_rate": 0.0,
+                    "completeness": 0.0,
+                },
             )
 
         # Limit number of claims to verify (for latency control)
         if self.max_claims is not None:
             claims = claims[: self.max_claims]
 
-        # Step 2: Verify each claim
+        # Step 2: Pre-chunk documents for evidence retrieval
+        chunks = None
+        if self.use_evidence_retrieval and documents:
+            chunks = self.retriever.chunk_documents(documents)
+
+        # Step 3: Verify each claim
         results = []
         for claim in claims:
-            result = self.verifier.verify(claim, documents)
+            # Retrieve relevant chunks for this claim
+            relevant_chunks = None
+            if chunks is not None:
+                relevant_chunks = self.retriever.retrieve(claim.text, chunks)
+
+            result = self.verifier.verify(claim, documents, chunks=relevant_chunks)
             results.append(result)
 
-        # Step 3: Aggregate
+        # Step 4: Aggregate
         return self._aggregate(answer, claims, results)
 
     def _aggregate(
@@ -314,6 +460,16 @@ class RAGFactsChecker:
             r for r in results if r.verdict in ("contradicted", "not_enough_info")
         ]
 
+        # Multi-dimensional scoring
+        dimensions = {
+            "groundedness": round(supported / total * 100, 1) if total > 0 else 0.0,
+            "contradiction_rate": round(contradicted / total * 100, 1) if total > 0 else 0.0,
+            "hallucination_rate": round(
+                (contradicted + not_enough) / total * 100, 1
+            ) if total > 0 else 0.0,
+            "completeness": round(supported / total * 100, 1) if total > 0 else 0.0,
+        }
+
         # Build summary
         summary = self._build_summary(
             total, supported, contradicted, not_enough, overall_confidence, overall_verdict
@@ -327,6 +483,7 @@ class RAGFactsChecker:
             results=results,
             summary=summary,
             hallucination_flags=hallucination_flags,
+            dimensions=dimensions,
         )
 
     def _build_summary(
