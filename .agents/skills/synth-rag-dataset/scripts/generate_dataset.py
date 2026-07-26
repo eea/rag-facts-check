@@ -226,7 +226,7 @@ class DatasetGenerator:
         answer = self.llm.generate(answer_prompt, max_new_tokens=256, temperature=0.7)
 
         # Build metadata
-        hallucination_type = HALLUCINATION_TYPES.get(topic, "fabricated_statistics") if has_hallucination else None
+        hallucination_type = "fabricated_statistics" if has_hallucination else None
 
         return {
             "question": question.strip(),
