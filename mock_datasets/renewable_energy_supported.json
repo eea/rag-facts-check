@@ -1,0 +1,16 @@
+{
+  "question": "What percentage of global electricity generation comes from renewable sources, and which technologies lead this growth?",
+  "answer": "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth. The International Renewable Energy Agency (IRENA) projects that renewables will reach 42% of global electricity by 2028, driven by rapidly declining costs and improved grid integration capabilities.",
+  "documents": [
+    "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth.",
+    "The International Renewable Energy Agency (IRENA) projects renewables will reach 42% of global electricity by 2028.",
+    "Battery storage costs have fallen by 89% since 2010, enabling greater grid integration of variable renewables.",
+    "Solar photovoltaic capacity additions reached 340 GW globally in 2023, representing the largest increase in renewable capacity."
+  ],
+  "metadata": {
+    "topic": "renewable_energy",
+    "has_hallucination": false,
+    "hallucination_type": null,
+    "difficulty": "medium"
+  }
+}

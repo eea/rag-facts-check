@@ -1,0 +1,16 @@
+{
+  "question": "What is the projected global temperature increase by 2100 according to the latest IPCC report?",
+  "answer": "The IPCC's 2024 Sixth Assessment Report projects a global temperature increase of 5.7°C by 2100 under current emission trajectories, with some models suggesting it could reach as high as 6.2°C if mitigation efforts remain insufficient.",
+  "documents": [
+    "The IPCC Sixth Assessment Report (2023) projects a global temperature increase of 1.5°C by 2040 under moderate emission scenarios (SSP2-4.5).",
+    "Current climate models estimate a 2-4°C rise by the end of the century if emissions continue at current rates (SSP3-7.0).",
+    "Arctic sea ice extent has declined by approximately 13% per decade since satellite observations began in 1979, consistent with global warming trends.",
+    "The Paris Agreement aims to limit warming to well below 2°C, with efforts to restrict it to 1.5°C above pre-industrial levels."
+  ],
+  "metadata": {
+    "topic": "climate_change",
+    "has_hallucination": true,
+    "hallucination_type": "fabricated_statistics",
+    "difficulty": "medium"
+  }
+}

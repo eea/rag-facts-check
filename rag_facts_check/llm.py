@@ -317,6 +317,44 @@ CONFIDENCE: 90
 EVIDENCE: "The Eiffel Tower was constructed between 1887 and 1889."
 EXPLANATION: The source document confirms the Eiffel Tower was built in 1889, supporting the claim."""
 
+        # Environmental topic checks
+        # Climate change: 5.7°C or 6.2°C contradicts 1.5-4°C in docs
+        if any(x in lower_claim for x in ["5.7", "6.2"]) and "temperature" in lower_claim:
+            return f"""VERDICT: CONTRADICTED
+CONFIDENCE: 85
+EVIDENCE: "Current climate models estimate a 2-4°C rise by the end of the century."
+EXPLANATION: The source documents project a 2-4°C temperature rise, but the claim states 5.7°C, which is a direct contradiction."""
+
+        # Renewable energy: 30% supported, 42% supported, 78% contradicted
+        if "30%" in lower_claim and "30%" in lower_docs:
+            return f"""VERDICT: SUPPORTED
+CONFIDENCE: 95
+EVIDENCE: "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth."
+EXPLANATION: The source document explicitly states that renewables accounted for 30% of global electricity in 2023, supporting the claim."""
+
+        if "42%" in lower_claim and "42%" in lower_docs:
+            return f"""VERDICT: SUPPORTED
+CONFIDENCE: 90
+EVIDENCE: "The International Renewable Energy Agency (IRENA) projects renewables will reach 42% of global electricity by 2028."
+EXPLANATION: The source document confirms IRENA projects 42% renewable electricity by 2028, supporting the claim."""
+
+        if "78%" in lower_claim and "renewable" in lower_claim:
+            return f"""VERDICT: CONTRADICTED
+CONFIDENCE: 85
+EVIDENCE: "In 2023, renewable energy sources accounted for 30% of global electricity generation."
+EXPLANATION: The source documents state renewables were 30% in 2023, but the claim says 78%, which is a significant contradiction."""
+
+        # General number matching for environmental claims
+        import re as _re
+        claim_numbers = set(_re.findall(r'\d+(?:\.\d+)?%', lower_claim))
+        doc_numbers = set(_re.findall(r'\d+(?:\.\d+)?%', lower_docs))
+        if claim_numbers and claim_numbers & doc_numbers:
+            matched = claim_numbers & doc_numbers
+            return f"""VERDICT: SUPPORTED
+CONFIDENCE: 85
+EVIDENCE: "A matching statistic appears in the source documents."
+EXPLANATION: The claim contains the statistic {matched.pop()}, which appears in the source documents, supporting the claim."""
+
         # Default: not enough info
         return f"""VERDICT: NOT ENOUGH INFO
 CONFIDENCE: 60
