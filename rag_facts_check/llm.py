@@ -131,10 +131,17 @@ class HuggingFaceLLM(LLM):
 class APILLM(LLM):
     """Adapter for HTTP-based LLM APIs (vLLM, Ollama, llama.cpp server, etc.).
 
+    Supports both completions and chat completions endpoints.
+
     Example::
 
+        # Completions endpoint
         llm = APILLM("http://localhost:8000/v1/completions",
                      model_name="my-model")
+
+        # Chat completions endpoint (for instruction-tuned models)
+        llm = APILLM("http://localhost:4002/v1/chat/completions",
+                     model_name="gemma", chat_mode=True)
     """
 
     def __init__(
@@ -144,6 +151,7 @@ class APILLM(LLM):
         api_key: Optional[str] = None,
         max_new_tokens: int = 512,
         temperature: float = 0.1,
+        chat_mode: bool = False,
     ):
         if not _HAS_REQUESTS:
             raise ImportError("requests is required for APILLM")
@@ -152,6 +160,7 @@ class APILLM(LLM):
         self.api_key = api_key
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
+        self.chat_mode = chat_mode
 
     def generate(
         self,
@@ -167,12 +176,20 @@ class APILLM(LLM):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload = {
-            "prompt": prompt,
-            "max_tokens": max_new_tokens,
-            "temperature": temperature,
-            **kwargs,
-        }
+        if self.chat_mode:
+            payload = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
+        else:
+            payload = {
+                "prompt": prompt,
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
         if self.model_name:
             payload["model"] = self.model_name
 
@@ -230,95 +247,9 @@ class ChatLLM(LLM):
         return self.base_llm.generate(formatted, max_new_tokens, temperature, **kwargs)
 
 
-class MockLLM(LLM):
-    """Mock LLM for testing and development.
+# ─── Mock LLM ────────────────────────────────────────────────────────────────┐
+# MockLLM has been moved to rag_facts_check/testing/mocks.py for proper
+# separation of testing utilities from production code.
+# Import it via: from rag_facts_check.testing import MockLLM
+# ─────────────────────────────────────────────────────────────────────────────┘
 
-    Returns predefined responses based on keywords in the prompt.
-    """
-
-    def __init__(self):
-        self.call_count = 0
-
-    def generate(
-        self,
-        prompt: str,
-        max_new_tokens: int = 512,
-        temperature: float = 0.1,
-        **kwargs,
-    ) -> str:
-        self.call_count += 1
-
-        lower = prompt.lower()
-        if "extract all factual claims" in lower or "extract claims from the following" in lower:
-            return self._mock_claims_response(prompt)
-        elif "verify whether a claim is supported" in lower or "verify the following claim" in lower:
-            return self._mock_verification_response(prompt)
-        else:
-            return "Mock response for: " + prompt[:100]
-
-    def _mock_claims_response(self, prompt: str) -> str:
-        """Mock claim extraction: split text into sentences and treat each as a claim."""
-        # Extract the text portion from the prompt (between "Text:\n" and "\nList each claim")
-        text_start = prompt.find("Text:")
-        if text_start >= 0:
-            text_start += 5  # skip "Text:"
-            # Find the end: look for the instructions that follow the text
-            text_end = prompt.find("List each claim", text_start)
-            if text_end < 0:
-                text_end = prompt.find("Claims:", text_start)
-            if text_end < 0:
-                text_end = len(prompt)
-            text = prompt[text_start:text_end].strip()
-        else:
-            text = "Paris is the capital of France. The Eiffel Tower was built in 1889."
-
-        # Simple sentence-based claim extraction for mock
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        claims = []
-        for i, s in enumerate(sentences, 1):
-            s = s.strip().rstrip('.')
-            if s and len(s) > 5:
-                claims.append(f"CLAIM {i}: {s}.")
-        if not claims:
-            return "NO CLAIMS"
-        return "\n".join(claims)
-
-    def _mock_verification_response(self, prompt: str) -> str:
-        """Mock verification: check if claim is supported/contradicted by docs."""
-        # Extract claim from prompt
-        claim_match = re.search(r'Claim:\s*\n(.+?)\n\nSource Documents:', prompt, re.DOTALL)
-        claim = claim_match.group(1).strip() if claim_match else "unknown claim"
-
-        # Extract documents from prompt
-        docs_match = re.search(r'Source Documents:\s*\n(.+?)\n\nInstructions:', prompt, re.DOTALL)
-        docs_text = docs_match.group(1).strip() if docs_match else ""
-
-        # Simple keyword-based mock verification
-        lower_claim = claim.lower()
-        lower_docs = docs_text.lower()
-
-        # Check for contradiction (claim says one thing, docs say another)
-        if "berlin" in lower_claim and "paris" in lower_docs:
-            return f"""VERDICT: CONTRADICTED
-CONFIDENCE: 85
-EVIDENCE: "The Louvre Museum is one of the world's largest museums, located in Paris, France."
-EXPLANATION: The source documents state the Louvre is in Paris, but the claim says it is in Berlin. This is a direct contradiction."""
-
-        # Check for support
-        if "capital of france" in lower_claim and "capital of france" in lower_docs:
-            return f"""VERDICT: SUPPORTED
-CONFIDENCE: 95
-EVIDENCE: "Paris is the capital of France."
-EXPLANATION: The source document explicitly states that Paris is the capital of France, which directly supports the claim."""
-
-        if "eiffel tower" in lower_claim and "1889" in lower_docs:
-            return f"""VERDICT: SUPPORTED
-CONFIDENCE: 90
-EVIDENCE: "The Eiffel Tower was constructed between 1887 and 1889."
-EXPLANATION: The source document confirms the Eiffel Tower was built in 1889, supporting the claim."""
-
-        # Default: not enough info
-        return f"""VERDICT: NOT ENOUGH INFO
-CONFIDENCE: 60
-EVIDENCE: N/A
-EXPLANATION: The source documents do not contain sufficient information to verify this claim."""

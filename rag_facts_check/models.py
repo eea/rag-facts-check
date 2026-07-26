@@ -1,7 +1,7 @@
 """Data models for the RAG fact-checking system."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -28,6 +28,9 @@ class VerificationResult:
         confidence: Confidence score 0-100.
         evidence: Exact quote from source documents (or "N/A").
         explanation: Brief explanation of the reasoning.
+        document_id: ID of the source document containing the evidence (if available).
+        chunk_id: ID of the document chunk containing the evidence (if available).
+        consistency_score: Agreement across multiple verification runs (0-1, for self-consistency).
     """
 
     claim: str
@@ -36,6 +39,9 @@ class VerificationResult:
     confidence: int  # 0-100
     evidence: str
     explanation: str
+    document_id: Optional[str] = None
+    chunk_id: Optional[str] = None
+    consistency_score: Optional[float] = None
 
 
 @dataclass
@@ -51,6 +57,7 @@ class CheckReport:
         results: List of per-claim verification results.
         summary: Human-readable summary of the results.
         hallucination_flags: Claims that are contradicted or lack evidence.
+        dimensions: Multi-dimensional scores (groundedness, contradiction_rate, etc.).
     """
 
     answer: str
@@ -60,6 +67,7 @@ class CheckReport:
     results: List[VerificationResult] = field(default_factory=list)
     summary: str = ""
     hallucination_flags: List[VerificationResult] = field(default_factory=list)
+    dimensions: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Convert the report to a dictionary for JSON serialization."""
@@ -68,6 +76,7 @@ class CheckReport:
             "overall_confidence": round(self.overall_confidence, 2),
             "overall_verdict": self.overall_verdict,
             "summary": self.summary,
+            "dimensions": self.dimensions,
             "claims": [
                 {"index": c.index, "text": c.text} for c in self.claims
             ],
@@ -79,6 +88,9 @@ class CheckReport:
                     "confidence": r.confidence,
                     "evidence": r.evidence,
                     "explanation": r.explanation,
+                    "document_id": r.document_id,
+                    "chunk_id": r.chunk_id,
+                    "consistency_score": r.consistency_score,
                 }
                 for r in self.results
             ],
@@ -90,6 +102,9 @@ class CheckReport:
                     "confidence": r.confidence,
                     "evidence": r.evidence,
                     "explanation": r.explanation,
+                    "document_id": r.document_id,
+                    "chunk_id": r.chunk_id,
+                    "consistency_score": r.consistency_score,
                 }
                 for r in self.hallucination_flags
             ],

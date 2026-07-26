@@ -48,7 +48,7 @@ def format_claim_extraction_prompt(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Claim Verification
+# Claim Verification — Standard
 # ---------------------------------------------------------------------------
 
 CLAIM_VERIFICATION_SYSTEM = """You are an expert fact-checker. Your task is to verify whether a claim is supported by the provided source documents.
@@ -98,6 +98,69 @@ def format_claim_verification_prompt(claim: str, documents: list[str]) -> str:
     formatted_docs = format_documents(documents)
     return CLAIM_VERIFICATION_PROMPT.format(
         system_prompt=CLAIM_VERIFICATION_SYSTEM,
+        claim=claim,
+        documents=formatted_docs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Claim Verification — Evidence-First (Multi-Step)
+# ---------------------------------------------------------------------------
+
+CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM = """You are an expert fact-checker. Your task is to verify whether a claim is supported by the provided source documents.
+
+Follow these steps in order:
+
+Step 1: Extract relevant evidence
+Read the source documents and extract any passages that are relevant to the claim. Quote them exactly.
+
+Step 2: Compare evidence to claim
+Compare the extracted evidence to the claim. Does the evidence support, contradict, or fail to address the claim?
+
+Step 3: Verdict
+Classify the claim as:
+- SUPPORTED: Evidence clearly supports the claim
+- CONTRADICTED: Evidence clearly contradicts the claim
+- NOT ENOUGH INFO: Evidence is insufficient to determine
+
+Step 4: Output
+Provide your response in the EXACT format below:
+
+VERDICT: [SUPPORTED|CONTRADICTED|NOT ENOUGH INFO]
+CONFIDENCE: [0-100]
+EVIDENCE: [exact quote from source documents, or "N/A"]
+EXPLANATION: [brief explanation, max 2 sentences]
+
+Be strict: if the evidence is ambiguous or indirect, lean toward "NOT ENOUGH INFO"."""
+
+CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = """{system_prompt}
+
+Claim:
+{claim}
+
+Source Documents:
+{documents}"""
+
+
+def format_claim_verification_evidence_first_prompt(
+    claim: str, documents: list[str]
+) -> str:
+    """Build the evidence-first multi-step verification prompt.
+
+    This prompt explicitly asks the model to extract evidence first,
+    then compare it to the claim, then provide a verdict. This reduces
+    hallucinated evaluations where the verifier makes up evidence.
+
+    Args:
+        claim: The claim text to verify.
+        documents: List of document strings.
+
+    Returns:
+        Formatted prompt string.
+    """
+    formatted_docs = format_documents(documents)
+    return CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT.format(
+        system_prompt=CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
         claim=claim,
         documents=formatted_docs,
     )

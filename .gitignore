@@ -23,3 +23,18 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated output
+output/
+report.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+
+# Generated datasets (JSONL output from generator)
+mock_datasets/*_generated.jsonl
+mock_datasets/all_*.jsonl
