@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
@@ -30,6 +31,62 @@ from typing import List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from rag_facts_check import LLM
+
+
+# ─── Environment Loading ─────────────────────────────────────────────────────
+
+def load_env(env_path: Optional[str] = None) -> dict:
+    """Load environment variables from a .env file.
+
+    Reads KEY=VALUE pairs (ignoring comments and blank lines).
+    Does NOT require python-dotenv.
+    """
+    env_vars = {}
+    if env_path is None:
+        # Default: look for .env in the project root (4 levels up from this script)
+        env_path = str(Path(__file__).resolve().parents[4] / ".env")
+
+    path = Path(env_path)
+    if not path.exists():
+        return env_vars
+
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, _, value = line.partition("=")
+                env_vars[key.strip()] = value.strip()
+
+    return env_vars
+
+
+def get_llm_from_env(env_vars: dict, api_url: Optional[str] = None,
+                     model_name: Optional[str] = None) -> "LLM":
+    """Create an APILLM instance from environment variables.
+
+    Reads LLM_API_BASE, LLM_API_KEY, LLM_MODEL from env_vars.
+    Command-line arguments override environment values.
+    """
+    from rag_facts_check import APILLM
+
+    base_url = api_url or env_vars.get("LLM_API_BASE", "http://localhost:8000/v1")
+    model = model_name or env_vars.get("LLM_MODEL", "gemma")
+    api_key = env_vars.get("LLM_API_KEY")
+
+    # Build the completions URL
+    if not base_url.endswith("/completions") and not base_url.endswith("/chat/completions"):
+        final_url = base_url.rstrip("/") + "/chat/completions"
+        chat_mode = True
+    elif "/chat/completions" in base_url:
+        final_url = base_url
+        chat_mode = True
+    else:
+        final_url = base_url
+        chat_mode = False
+
+    return APILLM(final_url, model_name=model, api_key=api_key, chat_mode=chat_mode)
 
 
 # ─── Environmental Topics ────────────────────────────────────────────────────
@@ -233,7 +290,10 @@ DOCUMENT_PROMPT_TEMPLATE = """You are an expert in environmental science. Genera
 
 The topic context: {description}
 
-The documents should contain factual information that could answer questions about this topic. Include specific data, dates, statistics, and facts. Each chunk should be self-contained and factual.
+These documents should contain factual information that could answer this question:
+"{question}"
+
+Include specific data, dates, statistics, and facts. Each chunk should be self-contained and factual.
 
 Format as:
 DOC 1: <text>
@@ -294,12 +354,13 @@ class DatasetGenerator:
         )
         question = self.llm.generate(question_prompt, max_new_tokens=128, temperature=0.7)
 
-        # Generate documents
+        # Generate documents (include question so docs are relevant)
         doc_prompt = DOCUMENT_PROMPT_TEMPLATE.format(
             topic=topic,
             description=description,
             num_docs=self.num_docs,
             chunk_size=self.doc_chunk_size,
+            question=question,
         )
         doc_response = self.llm.generate(doc_prompt, max_new_tokens=512, temperature=0.7)
         documents = self._parse_documents(doc_response)
@@ -428,21 +489,27 @@ def main():
     parser.add_argument(
         "--llm-backend",
         type=str,
-        choices=["mock", "hf", "api"],
+        choices=["mock", "env", "hf", "api"],
         default="mock",
-        help="LLM backend to use (default: mock).",
+        help="LLM backend to use (default: mock). 'env' reads from .env file.",
+    )
+    parser.add_argument(
+        "--env-file",
+        type=str,
+        default=None,
+        help="Path to .env file (default: <project-root>/.env).",
     )
     parser.add_argument(
         "--api-url",
         type=str,
-        default="http://localhost:8000/v1/completions",
-        help="API endpoint for APILLM backend.",
+        default=None,
+        help="API endpoint for APILLM backend (overrides .env).",
     )
     parser.add_argument(
         "--model-name",
         type=str,
         default=None,
-        help="Model name for APILLM backend.",
+        help="Model name for APILLM backend (overrides .env).",
     )
     parser.add_argument(
         "-o", "--output",
@@ -469,6 +536,15 @@ def main():
     # Initialize LLM
     if args.mock or args.llm_backend == "mock":
         llm = MockGenerationLLM()
+    elif args.llm_backend == "env":
+        # Load from .env file
+        env_vars = load_env(args.env_file)
+        if not env_vars:
+            print("ERROR: No .env file found. Create one with LLM_API_BASE, LLM_API_KEY, LLM_MODEL.")
+            sys.exit(1)
+        if args.verbose:
+            print(f"Loaded .env: API_BASE={env_vars.get('LLM_API_BASE', 'N/A')}, MODEL={env_vars.get('LLM_MODEL', 'N/A')}")
+        llm = get_llm_from_env(env_vars, api_url=args.api_url, model_name=args.model_name)
     elif args.llm_backend == "api":
         from rag_facts_check import APILLM
         llm = APILLM(args.api_url, model_name=args.model_name)

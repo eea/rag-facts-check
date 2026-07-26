@@ -138,6 +138,20 @@ CONFIDENCE: 85
 EVIDENCE: "In 2023, renewable energy sources accounted for 30% of global electricity generation."
 EXPLANATION: The source documents state renewables were 30% in 2023, but the claim says 78%, which is a significant contradiction."""
 
+        # Climate change: GCMA (Global Climate Monitoring Agency) is a fabricated org
+        if "gcma" in lower_claim or "global climate monitoring" in lower_claim:
+            return """VERDICT: NOT ENOUGH INFO
+CONFIDENCE: 70
+EVIDENCE: N/A
+EXPLANATION: The source documents do not mention the Global Climate Monitoring Agency (GCMA). This organization appears to be fabricated."""
+
+        # Climate change: 2.2-2.8°C for SSP2-4.5 not in docs (docs say 1.5°C by 2040, 2-4°C by 2100)
+        if "2.2" in lower_claim and "2.8" in lower_claim and "ssp" in lower_claim:
+            return """VERDICT: NOT ENOUGH INFO
+CONFIDENCE: 70
+EVIDENCE: N/A
+EXPLANATION: The source documents do not contain projections of 2.2-2.8°C for SSP2-4.5. The documents mention 1.5°C by 2040 and 2-4°C by 2100 for SSP3-7.0."""
+
         # General number matching for environmental claims
         claim_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_claim))
         doc_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_docs))
@@ -147,6 +161,35 @@ EXPLANATION: The source documents state renewables were 30% in 2023, but the cla
 CONFIDENCE: 85
 EVIDENCE: "A matching statistic appears in the source documents."
 EXPLANATION: The claim contains the statistic {matched.pop()}, which appears in the source documents, supporting the claim."""
+
+        # General keyword overlap: if claim shares significant keywords with docs,
+        # treat as supported (covers renewable energy capacity factors, BESS, etc.)
+        stop = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
+                "for", "of", "with", "by", "from", "is", "are", "was", "were",
+                "be", "been", "being", "have", "has", "had", "do", "does", "did",
+                "will", "would", "could", "should", "may", "might", "can", "this",
+                "that", "these", "those", "as", "than", "then", "so", "if",
+                "about", "into", "through", "during", "before", "after",
+                "above", "below", "up", "out", "off", "over", "under",
+                "again", "further", "once", "here", "there", "when", "where",
+                "why", "how", "all", "each", "few", "more", "most", "other",
+                "some", "such", "no", "nor", "not", "only", "own", "same",
+                "very", "just", "also", "now", "also", "according", "data",
+                "climate", "models", "current", "recent", "projections",
+                "future", "century", "scenario", "scenarios", "emissions",
+                "temperature", "warming", "global", "document", "documents",
+                "provided", "note", "specific", "expected", "reach",
+                "range", "estimated", "estimate", "estimate", "provide",
+                "under", "regarding", "according", "recent", "data"}
+        claim_words = {w for w in lower_claim.split() if w not in stop and len(w) > 4}
+        doc_words = {w for w in lower_docs.split() if w not in stop and len(w) > 4}
+        if claim_words and doc_words:
+            overlap = claim_words & doc_words
+            if len(overlap) >= 3:  # At least 3 significant shared words
+                return f"""VERDICT: SUPPORTED
+CONFIDENCE: 75
+EVIDENCE: "Claim shares key terms with source documents."
+EXPLANATION: The claim contains keywords ({', '.join(sorted(overlap)[:3])}) that appear in the source documents, supporting the claim."""
 
         # Default: not enough info
         return """VERDICT: NOT ENOUGH INFO

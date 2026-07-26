@@ -131,10 +131,17 @@ class HuggingFaceLLM(LLM):
 class APILLM(LLM):
     """Adapter for HTTP-based LLM APIs (vLLM, Ollama, llama.cpp server, etc.).
 
+    Supports both completions and chat completions endpoints.
+
     Example::
 
+        # Completions endpoint
         llm = APILLM("http://localhost:8000/v1/completions",
                      model_name="my-model")
+
+        # Chat completions endpoint (for instruction-tuned models)
+        llm = APILLM("http://localhost:4002/v1/chat/completions",
+                     model_name="gemma", chat_mode=True)
     """
 
     def __init__(
@@ -144,6 +151,7 @@ class APILLM(LLM):
         api_key: Optional[str] = None,
         max_new_tokens: int = 512,
         temperature: float = 0.1,
+        chat_mode: bool = False,
     ):
         if not _HAS_REQUESTS:
             raise ImportError("requests is required for APILLM")
@@ -152,6 +160,7 @@ class APILLM(LLM):
         self.api_key = api_key
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
+        self.chat_mode = chat_mode
 
     def generate(
         self,
@@ -167,12 +176,20 @@ class APILLM(LLM):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload = {
-            "prompt": prompt,
-            "max_tokens": max_new_tokens,
-            "temperature": temperature,
-            **kwargs,
-        }
+        if self.chat_mode:
+            payload = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
+        else:
+            payload = {
+                "prompt": prompt,
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
         if self.model_name:
             payload["model"] = self.model_name
 

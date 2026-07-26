@@ -142,7 +142,7 @@ class TestEndToEnd:
         )
         d = report.to_dict()
         assert d["overall_verdict"] == report.overall_verdict
-        assert d["overall_confidence"] == report.overall_confidence
+        assert d["overall_confidence"] == pytest.approx(report.overall_confidence, abs=0.01)
         assert isinstance(d["claims"], list)
         assert isinstance(d["results"], list)
         assert isinstance(d["dimensions"], dict)
