@@ -152,6 +152,13 @@ CONFIDENCE: 70
 EVIDENCE: N/A
 EXPLANATION: The source documents do not contain projections of 2.2-2.8°C for SSP2-4.5. The documents mention 1.5°C by 2040 and 2-4°C by 2100 for SSP3-7.0."""
 
+        # Eutrophication: North American Nutrient Accord is a fabricated agreement
+        if "nutrient accord" in lower_claim or "north american nutrient" in lower_claim:
+            return """VERDICT: NOT ENOUGH INFO
+CONFIDENCE: 70
+EVIDENCE: N/A
+EXPLANATION: The source documents do not mention any Nutrient Accord. This agreement appears to be fabricated."""
+
         # General number matching for environmental claims
         claim_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_claim))
         doc_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_docs))
