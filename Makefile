@@ -10,69 +10,57 @@ DATASETS := mock_datasets
 TOPIC ?= pollution
 DATASET ?= climate_change_hallucinated
 
-.PHONY: help
+## help: Show this help
 help:
-	@echo "Usage:"
-	@echo "  make gen TOPIC=climate_change              Generate dataset"
-	@echo "  make gen-all                                Generate all topics"
-	@echo "  make check DATASET=climate_change_hallucinated"
-	@echo "  make check-all                              Check all datasets"
-	@echo "  make test                                   Run tests"
-	@echo "  make example                                Run example_usage.py"
-	@echo "  make list                                   List datasets"
-	@echo "  make clean                                  Clean generated files"
+	@echo "Usage: make <target>"
+	@echo ""
+	@echo "Targets:"
+	@grep -hE '^## [a-zA-Z]' $(MAKEFILE_LIST) | \
+		sed 's/^## \([^:]*\):\(.*\)/  \1  \2/' | \
+		awk '{printf "  %-20s %s\n", $$1, substr($$0, index($$0,$$2))}' | \
+		sort
 
-# ─── Dataset Generation ──────────────────────────────────────────────────────
-
-.PHONY: gen gen-all
-
+## gen: Generate a dataset (TOPIC=, default: pollution)
 gen:
 	$(PYTHON) $(GEN) --topics $(TOPIC) --hallucination-rate 0.5 -n 1 \
 		--num-docs 6 --doc-chunk-size 80 \
 		-o $(DATASETS)/$(TOPIC)_generated.jsonl --verbose
 
+## gen-all: Generate datasets for all topics
 gen-all:
 	$(PYTHON) $(GEN) -n 10 --hallucination-rate 0.3 --num-docs 6 \
 		--doc-chunk-size 80 -o $(DATASETS)/all_generated.jsonl --verbose
 
-# ─── Fact Checking ───────────────────────────────────────────────────────────
-
-.PHONY: check check-all
-
+## check: Check a dataset (DATASET=, default: climate_change_hallucinated)
 check:
 	$(PYTHON) $(CHK) $(DATASETS)/$(DATASET).json
 
+## check-all: Check all datasets
 check-all:
 	$(PYTHON) $(CHK) $(DATASETS)/*.json
 
-# ─── Testing ─────────────────────────────────────────────────────────────────
-
-.PHONY: test test-verbose test-coverage
-
+## test: Run tests
 test:
 	$(PYTHON) -m pytest tests/ -v --tb=short
 
+## test-verbose: Run tests with full output
 test-verbose:
 	$(PYTHON) -m pytest tests/ -vv --tb=long
 
+## test-coverage: Run tests with coverage report
 test-coverage:
 	$(PYTHON) -m pytest tests/ -v --cov=rag_facts_check --cov-report=term-missing
 
-# ─── Examples ────────────────────────────────────────────────────────────────
-
-.PHONY: example
-
+## example: Run example_usage.py
 example:
 	$(PYTHON) example_usage.py
 
-# ─── Utility ─────────────────────────────────────────────────────────────────
+## list: List available datasets
+list:
+	@echo "Datasets:"; ls -1 $(DATASETS)/*.json 2>/dev/null | xargs -I{} basename {} .json
 
-.PHONY: clean list
-
+## clean: Remove generated files
 clean:
 	rm -f $(DATASETS)/*_generated.jsonl $(DATASETS)/all_*.jsonl
 	rm -f report.json
 	rm -rf .pytest_cache .coverage htmlcov
-
-list:
-	@echo "Datasets:"; ls -1 $(DATASETS)/*.json 2>/dev/null | xargs -I{} basename {} .json
