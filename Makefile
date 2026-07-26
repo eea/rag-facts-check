@@ -35,9 +35,17 @@ gen-all:
 check:
 	$(PYTHON) $(CHK) $(DATASETS)/$(DATASET).json
 
+## check-v: Check a dataset with detailed evidence (DATASET=)
+check-v:
+	$(PYTHON) $(CHK) --verbose $(DATASETS)/$(DATASET).json
+
 ## check-all: Check all datasets
 check-all:
 	$(PYTHON) $(CHK) $(DATASETS)/*.json
+
+## check-all-v: Check all datasets with detailed evidence
+check-all-v:
+	$(PYTHON) $(CHK) --verbose $(DATASETS)/*.json
 
 ## test: Run tests
 test:

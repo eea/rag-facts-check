@@ -68,17 +68,26 @@ def print_report(name: str, report, verbose: bool = False):
     print(f"Claims:     {len(d['claims'])} total, {len(d['hallucination_flags'])} flagged")
     print(f"Dimensions: {d['dimensions']}")
 
-    if verbose:
-        print(f"\nPer-claim results:")
-        for r in d["results"]:
-            claim_preview = r["claim"][:70] + "..." if len(r["claim"]) > 70 else r["claim"]
-            print(f"  [{r['claim_index']}] {r['verdict'].upper():15} | {claim_preview}")
+    print(f"\nPer-claim results:")
+    for r in d["results"]:
+        claim_preview = r["claim"][:75] + "..." if len(r["claim"]) > 75 else r["claim"]
+        print(f"  [{r['claim_index']}] {r['verdict'].upper():15} conf={r['confidence']:3}% | {claim_preview}")
 
-        if d["hallucination_flags"]:
-            print(f"\nHallucination flags:")
-            for f in d["hallucination_flags"]:
-                claim_preview = f["claim"][:60] + "..." if len(f["claim"]) > 60 else f["claim"]
-                print(f"  ⚠️  [{f['claim_index']}] {claim_preview}")
+    if d["hallucination_flags"]:
+        print(f"\nHallucination flags:")
+        for f in d["hallucination_flags"]:
+            claim_preview = f["claim"][:65] + "..." if len(f["claim"]) > 65 else f["claim"]
+            print(f"  ⚠️  [{f['claim_index']}] {claim_preview}")
+
+    if verbose:
+        print(f"\nDetailed evidence:")
+        for r in d["results"]:
+            print(f"\n  Claim {r['claim_index']}: {r['claim'][:80]}")
+            print(f"  Verdict:    {r['verdict']}")
+            print(f"  Confidence: {r['confidence']}%")
+            print(f"  Evidence:   {r['evidence'][:120]}")
+            if r.get("explanation"):
+                print(f"  Explanation: {r['explanation'][:150]}")
 
 
 def main():
