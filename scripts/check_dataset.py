@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Check a mock dataset against the fact-checking pipeline.
+Check a mock dataset against the fact-checking pipeline using a real LLM.
 
 Usage:
     python scripts/check_dataset.py mock_datasets/climate_change_hallucinated.json
-    python scripts/check_dataset.py --real mock_datasets/climate_change_hallucinated.json
-    python scripts/check_dataset.py --real --verbose mock_datasets/*.json
+    python scripts/check_dataset.py --verbose mock_datasets/*.json
 """
 
 import argparse
@@ -16,7 +15,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rag_facts_check import RAGFactsChecker, MockLLM
+from rag_facts_check import RAGFactsChecker, APILLM
 
 
 def load_env(env_path: str = ".env") -> dict:
@@ -36,25 +35,12 @@ def load_env(env_path: str = ".env") -> dict:
     return env_vars
 
 
-def check_with_mock(dataset_path: str, verbose: bool = False):
-    """Check a dataset using MockLLM."""
-    from rag_facts_check import MockLLM
-
-    data = json.load(open(dataset_path))
-    llm = MockLLM()
-    checker = RAGFactsChecker(llm)
-    report = checker.check(answer=data["answer"], documents=data["documents"])
-    return report, data
-
-
-def check_with_real(dataset_path: str, verbose: bool = False):
+def check_dataset(dataset_path: str, verbose: bool = False):
     """Check a dataset using real LLM from .env."""
-    from rag_facts_check import APILLM
-
     data = json.load(open(dataset_path))
     env = load_env()
     if not env:
-        print("ERROR: No .env file found. Create one with LLM_API_BASE, LLM_API_KEY, LLM_MODEL.")
+        print("ERROR: No .env file found. Copy .env.example to .env and configure.")
         sys.exit(1)
 
     base = env.get("LLM_API_BASE", "http://localhost:4002/v1")
@@ -68,10 +54,10 @@ def check_with_real(dataset_path: str, verbose: bool = False):
     llm = APILLM(url, model_name=model, api_key=api_key, chat_mode=True)
     checker = RAGFactsChecker(llm)
     report = checker.check(answer=data["answer"], documents=data["documents"])
-    return report, data
+    return report
 
 
-def print_report(name: str, report, data, verbose: bool = False):
+def print_report(name: str, report, verbose: bool = False):
     """Print a formatted report."""
     d = report.to_dict()
     print(f"\n{'=' * 60}")
@@ -96,19 +82,16 @@ def print_report(name: str, report, data, verbose: bool = False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check a mock dataset.")
+    parser = argparse.ArgumentParser(description="Check a dataset with real LLM.")
     parser.add_argument("datasets", nargs="+", help="Dataset JSON file(s) to check.")
-    parser.add_argument("--real", action="store_true", help="Use real LLM from .env.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output.")
     args = parser.parse_args()
-
-    check_func = check_with_real if args.real else check_with_mock
 
     for dataset_path in args.datasets:
         name = Path(dataset_path).stem
         try:
-            report, data = check_func(dataset_path, verbose=args.verbose)
-            print_report(name, report, data, verbose=args.verbose)
+            report = check_dataset(dataset_path, verbose=args.verbose)
+            print_report(name, report, verbose=args.verbose)
         except Exception as e:
             print(f"ERROR checking {dataset_path}: {e}")
             if args.verbose:

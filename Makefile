@@ -1,12 +1,13 @@
 # RAG Facts Check — Makefile
 #
+# Requires .env with LLM config (copy .env.example to .env).
+#
 # Usage:
-#   make gen TOPIC=climate_change              # Generate with mock LLM
-#   make gen-real TOPIC=eutrophication          # Generate with real LLM (.env)
+#   make gen TOPIC=climate_change              # Generate dataset
+#   make gen-all                                # Generate all topics
 #   make check DATASET=climate_change_hallucinated
-#   make check-real DATASET=climate_change_hallucinated
-#   make check-all                              # Check all datasets (mock)
-#   make test                                   # Run all tests
+#   make check-all                              # Check all datasets
+#   make test                                   # Run tests
 #   make example                                # Run example_usage.py
 
 PYTHON := python3
@@ -19,41 +20,26 @@ DATASET ?= climate_change_hallucinated
 
 # ─── Dataset Generation ──────────────────────────────────────────────────────
 
-.PHONY: gen gen-real gen-all-mock gen-all-real
+.PHONY: gen gen-all
 
 gen:
 	$(PYTHON) $(GEN) --topics $(TOPIC) --hallucination-rate 0.5 -n 1 \
-		--num-docs 6 --doc-chunk-size 80 --mock \
-		-o $(DATASETS)/$(TOPIC)_mock.jsonl --verbose
+		--num-docs 6 --doc-chunk-size 80 \
+		-o $(DATASETS)/$(TOPIC)_generated.jsonl --verbose
 
-gen-real:
-	$(PYTHON) $(GEN) --topics $(TOPIC) --hallucination-rate 0.5 -n 1 \
-		--num-docs 6 --doc-chunk-size 80 --llm-backend env \
-		-o $(DATASETS)/$(TOPIC)_real.jsonl --verbose
-
-gen-all-mock:
+gen-all:
 	$(PYTHON) $(GEN) -n 10 --hallucination-rate 0.3 --num-docs 6 \
-		--doc-chunk-size 80 --mock -o $(DATASETS)/all_mock.jsonl --verbose
-
-gen-all-real:
-	$(PYTHON) $(GEN) -n 10 --hallucination-rate 0.3 --num-docs 6 \
-		--doc-chunk-size 80 --llm-backend env -o $(DATASETS)/all_real.jsonl --verbose
+		--doc-chunk-size 80 -o $(DATASETS)/all_generated.jsonl --verbose
 
 # ─── Fact Checking ───────────────────────────────────────────────────────────
 
-.PHONY: check check-real check-all check-all-real
+.PHONY: check check-all
 
 check:
 	$(PYTHON) $(CHK) $(DATASETS)/$(DATASET).json
 
-check-real:
-	$(PYTHON) $(CHK) --real $(DATASETS)/$(DATASET).json
-
 check-all:
 	$(PYTHON) $(CHK) $(DATASETS)/*.json
-
-check-all-real:
-	$(PYTHON) $(CHK) --real $(DATASETS)/*.json
 
 # ─── Testing ─────────────────────────────────────────────────────────────────
 
@@ -80,7 +66,7 @@ example:
 .PHONY: clean list
 
 clean:
-	rm -f $(DATASETS)/*_mock.jsonl $(DATASETS)/*_real.jsonl $(DATASETS)/all_*.jsonl
+	rm -f $(DATASETS)/*_generated.jsonl $(DATASETS)/all_*.jsonl
 	rm -f report.json
 	rm -rf .pytest_cache .coverage htmlcov
 

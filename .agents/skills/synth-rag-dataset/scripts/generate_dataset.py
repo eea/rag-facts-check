@@ -8,13 +8,15 @@ Each sample contains:
 - An AI-generated answer (optionally with controlled hallucinations)
 - Metadata (topic, hallucination flag, difficulty)
 
+Requires a real LLM backend. Configure via .env file (copy .env.example).
+
 Usage:
     python .agents/skills/synth-rag-dataset/scripts/generate_dataset.py \
-        -n 10 --hallucination-rate 0.3 --mock -o output/synth-rag.jsonl
+        -n 10 --hallucination-rate 0.3 -o output/synth-rag.jsonl
 
     python .agents/skills/synth-rag-dataset/scripts/generate_dataset.py \
         -n 20 --hallucination-rate 0.4 --topics climate_change,renewable_energy \
-        --difficulty hard --mock -o output/synth-rag.jsonl
+        --difficulty hard -o output/synth-rag.jsonl
 """
 
 import argparse
@@ -116,165 +118,6 @@ TOPIC_DESCRIPTIONS = {
     "air_quality": "particulate matter, PM2.5, air pollution sources, health impacts",
     "water_resources": "freshwater availability, drought, water stress, conservation",
 }
-
-# ─── Mock Data for Testing ────────────────────────────────────────────────────
-
-MOCK_QUESTIONS = {
-    "climate_change": "What is the projected global temperature increase by 2100?",
-    "renewable_energy": "What percentage of global electricity comes from renewable sources?",
-    "biodiversity": "How many species went extinct in 2023 according to the IUCN Red List?",
-    "pollution": "What are the primary sources of ocean plastic pollution?",
-    "carbon_emissions": "Which countries are the largest CO2 emitters globally?",
-    "sustainable_agriculture": "How does regenerative agriculture reduce carbon emissions?",
-    "ocean_conservation": "What percentage of ocean areas are designated as marine protected areas?",
-    "forest_protection": "How much Amazon rainforest was lost to deforestation in 2023?",
-    "air_quality": "What are the health impacts of PM2.5 exposure?",
-    "water_resources": "Which countries face the most severe water stress?",
-}
-
-MOCK_DOCUMENTS = {
-    "climate_change": [
-        "The IPCC Sixth Assessment Report (2023) projects a global temperature increase of 1.5°C by 2040 under moderate emission scenarios (SSP2-4.5).",
-        "Current climate models estimate a 2-4°C rise by the end of the century if emissions continue at current rates (SSP3-7.0).",
-        "Arctic sea ice extent has declined by approximately 13% per decade since satellite observations began in 1979.",
-    ],
-    "renewable_energy": [
-        "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth.",
-        "The International Renewable Energy Agency (IRENA) projects renewables will reach 42% of global electricity by 2028.",
-        "Battery storage costs have fallen by 89% since 2010, enabling greater grid integration of variable renewables.",
-    ],
-    "biodiversity": [
-        "The IUCN Red List identifies 159 species as Extinct or Extinct in the Wild as of 2023.",
-        "Habitat loss and degradation are the primary drivers of biodiversity decline, affecting 85% of threatened species.",
-        "The Living Planet Index reports an average 69% decline in monitored wildlife populations between 1970 and 2020.",
-    ],
-    "pollution": [
-        "An estimated 80% of marine pollution originates from land-based sources, with plastic accounting for 73% of that total.",
-        "The five most polluted rivers — Yangtze, Ganges, Nile, Mekong, and Indus — carry approximately 67% of global riverine plastic discharge.",
-        "Microplastics have been detected in 94% of tap water samples and 83% of bottled water samples globally.",
-    ],
-    "carbon_emissions": [
-        "China remains the world's largest CO2 emitter, accounting for 31% of global fossil CO2 emissions in 2023.",
-        "The United States and India follow as the second and third largest emitters, contributing 13% and 8% respectively.",
-        "Global CO2 emissions from energy combustion reached 36.8 billion tonnes in 2023, a 1.1% increase from 2022.",
-    ],
-    "sustainable_agriculture": [
-        "Regenerative agriculture practices can sequester up to 4.3 billion tonnes of CO2 annually in global soils.",
-        "Cover cropping and no-till farming improve soil organic matter by 0.1-0.6% per year under optimal conditions.",
-        "The Rodale Institute's research shows regenerative grazing can increase soil carbon by 1,000 pounds per acre annually.",
-    ],
-    "ocean_conservation": [
-        "As of 2023, 8.2% of the world's ocean area is designated as marine protected areas (MPAs), covering 14.2 million km².",
-        "The UN High Seas Treaty, adopted in 2023, aims to protect 30% of oceans by 2030 under the 30x30 initiative.",
-        "Coral bleaching events in 2023 affected 75% of the world's coral reefs, primarily due to marine heatwaves.",
-    ],
-    "forest_protection": [
-        "Amazon deforestation in 2023 totaled 11,088 km², representing a 22% decrease from the previous year.",
-        "The Great Green Wall initiative has restored 18 million hectares of degraded land across the Sahel since 2007.",
-        "Primary forest loss globally reached 4.7 million hectares in 2023, with the Amazon, Congo Basin, and Southeast Asia most affected.",
-    ],
-    "air_quality": [
-        "Long-term exposure to PM2.5 concentrations above 15 μg/m³ increases the risk of cardiovascular disease by 13% per 10 μg/m³.",
-        "WHO's updated air quality guidelines recommend an annual mean PM2.5 level of 5 μg/m³, down from the previous 10 μg/m³.",
-        "Indoor air pollution from solid fuel use affects 2.6 billion people globally, causing 3.2 million premature deaths annually.",
-    ],
-    "water_resources": [
-        "Over 2 billion people live in countries experiencing high water stress, with 40% of the global population projected to face water scarcity by 2050.",
-        "The World Resources Institute identifies India, China, and the United States as having the highest total water withdrawal.",
-        "Groundwater depletion rates exceed recharge rates in 20% of aquifers globally, threatening long-term water security.",
-    ],
-}
-
-MOCK_ANSWERS = {
-    "climate_change": "The global temperature is projected to increase by 3.2°C by 2100, according to the latest IPCC projections.",
-    "renewable_energy": "Renewable energy currently provides 45% of global electricity, with solar leading at 22% of total generation.",
-    "biodiversity": "A total of 237 species went extinct in 2023, primarily due to habitat destruction in tropical regions.",
-    "pollution": "Plastic production reached 500 million tonnes annually, with 80% ending up in landfills or the environment.",
-    "carbon_emissions": "India is the world's largest CO2 emitter, surpassing China with 35% of global emissions in 2023.",
-    "sustainable_agriculture": "Regenerative agriculture can sequester up to 10 billion tonnes of CO2 annually, completely offsetting global emissions.",
-    "ocean_conservation": "Marine protected areas now cover 15% of the world's oceans, with 50% of coral reefs successfully restored.",
-    "forest_protection": "Amazon deforestation has increased by 40% in 2023, reaching 15,000 km² of forest loss.",
-    "air_quality": "PM2.5 exposure causes 8.9 million premature deaths annually, making it the leading environmental health risk.",
-    "water_resources": "By 2050, 60% of the global population will live in areas of high water stress, up from 20% currently.",
-}
-
-# Hallucinated versions (contain fabricated facts)
-MOCK_HALLUCINATED_ANSWERS = {
-    "climate_change": "The global temperature is projected to increase by 5.7°C by 2100, according to NASA's 2024 report.",
-    "renewable_energy": "Renewable energy currently provides 78% of global electricity, with solar alone accounting for 52% of total generation.",
-    "biodiversity": "A total of 542 species went extinct in 2023, with amphibians and reptiles most severely affected.",
-    "pollution": "Plastic production reached 2 billion tonnes annually, with 95% ending up in the ocean.",
-    "carbon_emissions": "Brazil is the world's largest CO2 emitter, responsible for 42% of global emissions in 2023.",
-    "sustainable_agriculture": "Regenerative agriculture can sequester up to 25 billion tonnes of CO2 annually, eliminating all agricultural emissions.",
-    "ocean_conservation": "Marine protected areas now cover 25% of the world's oceans, with 80% of coral reefs successfully restored.",
-    "forest_protection": "Amazon deforestation has increased by 67% in 2023, reaching 22,000 km² of forest loss.",
-    "air_quality": "PM2.5 exposure causes 15.3 million premature deaths annually, making it the leading cause of death globally.",
-    "water_resources": "By 2050, 85% of the global population will live in areas of complete water scarcity.",
-}
-
-# Hallucination types per topic
-HALLUCINATION_TYPES = {
-    "climate_change": "fabricated_statistics",
-    "renewable_energy": "exaggerated_claims",
-    "biodiversity": "fabricated_statistics",
-    "pollution": "exaggerated_claims",
-    "carbon_emissions": "phantom_organizations",
-    "sustainable_agriculture": "fabricated_statistics",
-    "ocean_conservation": "exaggerated_claims",
-    "forest_protection": "fabricated_statistics",
-    "air_quality": "fabricated_statistics",
-    "water_resources": "exaggerated_claims",
-}
-
-
-class MockGenerationLLM(LLM):
-    """Mock LLM for dataset generation. Returns predefined responses."""
-
-    def __init__(self):
-        self.call_count = 0
-        self.current_topic = "climate_change"
-
-    def generate(self, prompt: str, max_new_tokens: int = 512,
-                 temperature: float = 0.1, **kwargs) -> str:
-        self.call_count += 1
-        lower = prompt.lower()
-
-        # Question generation
-        if "generate a specific, factual question" in lower:
-            topic = self._extract_topic(prompt)
-            self.current_topic = topic
-            return MOCK_QUESTIONS.get(topic, "What are the key environmental challenges in this area?")
-
-        # Answer generation (accurate) — check BEFORE document generation
-        # because the answer prompt contains documents that mention "DOC"
-        if "factual answer" in lower:
-            return MOCK_ANSWERS.get(self.current_topic, "The data indicates significant environmental changes.")
-
-        # Answer generation (hallucinated)
-        if "hallucinated fact" in lower or "not supported by the documents" in lower:
-            return MOCK_HALLUCINATED_ANSWERS.get(self.current_topic, "The data shows unprecedented environmental changes.")
-
-        # Document generation — check for "short document chunks" to avoid
-        # matching answer prompts that contain documents with "DOC" markers
-        if "short document chunks" in lower or "generate" in lower and "document chunks" in lower:
-            topic = self._extract_topic(prompt)
-            self.current_topic = topic
-            docs = MOCK_DOCUMENTS.get(topic, MOCK_DOCUMENTS["climate_change"])
-            num_docs = 3
-            lines = []
-            for i in range(min(num_docs, len(docs))):
-                lines.append(f"DOC {i + 1}: {docs[i]}")
-            return "\n".join(lines)
-
-        return f"Mock generation response."
-
-    def _extract_topic(self, prompt: str) -> str:
-        """Extract the topic from the prompt."""
-        for topic in TOPICS:
-            if topic in prompt.lower():
-                return topic
-        return "climate_change"
-
 
 # ─── Generation Prompts ───────────────────────────────────────────────────────
 
@@ -481,17 +324,11 @@ def main():
         help="Random seed for reproducibility (default: 42).",
     )
     parser.add_argument(
-        "--mock",
-        action="store_true",
-        default=False,
-        help="Use MockGenerationLLM for testing (no real LLM required).",
-    )
-    parser.add_argument(
         "--llm-backend",
         type=str,
-        choices=["mock", "env", "hf", "api"],
-        default="mock",
-        help="LLM backend to use (default: mock). 'env' reads from .env file.",
+        choices=["env", "hf", "api"],
+        default="env",
+        help="LLM backend to use (default: env, reads from .env file).",
     )
     parser.add_argument(
         "--env-file",
@@ -534,13 +371,10 @@ def main():
             sys.exit(1)
 
     # Initialize LLM
-    if args.mock or args.llm_backend == "mock":
-        llm = MockGenerationLLM()
-    elif args.llm_backend == "env":
-        # Load from .env file
+    if args.llm_backend == "env":
         env_vars = load_env(args.env_file)
         if not env_vars:
-            print("ERROR: No .env file found. Create one with LLM_API_BASE, LLM_API_KEY, LLM_MODEL.")
+            print("ERROR: No .env file found. Copy .env.example to .env and configure.")
             sys.exit(1)
         if args.verbose:
             print(f"Loaded .env: API_BASE={env_vars.get('LLM_API_BASE', 'N/A')}, MODEL={env_vars.get('LLM_MODEL', 'N/A')}")
@@ -551,11 +385,8 @@ def main():
     elif args.llm_backend == "hf":
         from rag_facts_check import HuggingFaceLLM
         from transformers import AutoTokenizer, AutoModelForCausalLM
-        # User must specify model
-        print("ERROR: --llm-backend hf requires a model. See README for details.")
+        print("ERROR: --llm-backend hf requires manual setup. See README.")
         sys.exit(1)
-    else:
-        llm = MockGenerationLLM()
 
     # Initialize generator
     generator = DatasetGenerator(
