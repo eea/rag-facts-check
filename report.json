@@ -1,0 +1,74 @@
+{
+  "answer": "Paris is the capital of France. The Eiffel Tower was built in 1889. The Louvre Museum is located in Berlin.",
+  "overall_confidence": 92.5,
+  "overall_verdict": "partially_supported",
+  "summary": "Overall confidence: 92%\nVerdict: Partially supported \u2014 some claims lack evidence\nClaims: 3 total, 2 supported, 1 contradicted, 0 need more info.\n\u26a0\ufe0f  1 claim(s) are contradicted by the source documents.",
+  "dimensions": {
+    "groundedness": 66.7,
+    "contradiction_rate": 33.3,
+    "hallucination_rate": 33.3,
+    "completeness": 66.7
+  },
+  "claims": [
+    {
+      "index": 1,
+      "text": "Paris is the capital of France."
+    },
+    {
+      "index": 2,
+      "text": "The Eiffel Tower was built in 1889."
+    },
+    {
+      "index": 3,
+      "text": "The Louvre Museum is located in Berlin."
+    }
+  ],
+  "results": [
+    {
+      "claim_index": 1,
+      "claim": "Paris is the capital of France.",
+      "verdict": "supported",
+      "confidence": 95,
+      "evidence": "\"Paris is the capital of France.\"",
+      "explanation": "The source document explicitly states that Paris is the capital of France, which directly supports the claim.",
+      "document_id": "doc_1",
+      "chunk_id": "0",
+      "consistency_score": 1.0
+    },
+    {
+      "claim_index": 2,
+      "claim": "The Eiffel Tower was built in 1889.",
+      "verdict": "supported",
+      "confidence": 90,
+      "evidence": "\"The Eiffel Tower was constructed between 1887 and 1889.\"",
+      "explanation": "The source document confirms the Eiffel Tower was built in 1889, supporting the claim.",
+      "document_id": "doc_2",
+      "chunk_id": "0",
+      "consistency_score": 1.0
+    },
+    {
+      "claim_index": 3,
+      "claim": "The Louvre Museum is located in Berlin.",
+      "verdict": "contradicted",
+      "confidence": 85,
+      "evidence": "\"The Louvre Museum is one of the world's largest museums, located in Paris, France.\"",
+      "explanation": "The source documents state the Louvre is in Paris, but the claim says it is in Berlin. This is a direct contradiction.",
+      "document_id": "doc_3",
+      "chunk_id": "0",
+      "consistency_score": 1.0
+    }
+  ],
+  "hallucination_flags": [
+    {
+      "claim_index": 3,
+      "claim": "The Louvre Museum is located in Berlin.",
+      "verdict": "contradicted",
+      "confidence": 85,
+      "evidence": "\"The Louvre Museum is one of the world's largest museums, located in Paris, France.\"",
+      "explanation": "The source documents state the Louvre is in Paris, but the claim says it is in Berlin. This is a direct contradiction.",
+      "document_id": "doc_3",
+      "chunk_id": "0",
+      "consistency_score": 1.0
+    }
+  ]
+}
