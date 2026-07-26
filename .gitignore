@@ -27,3 +27,10 @@ Thumbs.db
 # Generated output
 output/
 report.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/

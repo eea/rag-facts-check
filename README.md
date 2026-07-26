@@ -50,10 +50,23 @@ print(report.to_dict())
 rag_facts_check/
 ├── __init__.py       # Package exports
 ├── models.py         # Data classes: Claim, VerificationResult, CheckReport
-├── llm.py            # LLM interface + adapters (HF, API, Chat, Mock)
+├── llm.py            # LLM interface + adapters (HF, API, Chat)
 ├── prompts.py        # Prompt templates for extraction & verification
 ├── retriever.py      # Evidence retrieval (chunk-based lexical matching)
-└── checker.py        # Core pipeline: Extractor → Verifier → Aggregator
+├── checker.py        # Core pipeline: Extractor → Verifier → Aggregator
+└── testing/
+    ├── __init__.py   # Testing utilities exports
+    └── mocks.py      # MockLLM for testing without a real model
+```
+
+```
+mock_datasets/       # Synthetic test datasets (JSON)
+tests/               # Pytest test suite
+├── conftest.py       # Shared fixtures
+├── test_models.py    # Data model tests
+├── test_retriever.py # Evidence retrieval tests
+├── test_checker.py   # Core pipeline tests
+└── test_integration.py # End-to-end tests
 ```
 
 ### Data Flow
@@ -198,6 +211,46 @@ checker = RAGFactsChecker(llm, num_consistency_runs=3)
 When using evidence retrieval, results include `document_id` and `chunk_id` fields, enabling precise citation tracking.
 
 ## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test module
+python -m pytest tests/test_checker.py -v
+
+# Run with coverage
+python -m pytest tests/ --cov=rag_facts_check --cov-report=term-missing
+
+# Run integration tests only
+python -m pytest tests/test_integration.py -v
+```
+
+### MockLLM
+
+The `MockLLM` class (in `rag_facts_check/testing/mocks.py`) provides deterministic
+responses based on keyword matching, enabling testing without a real LLM.
+
+```python
+from rag_facts_check.testing import MockLLM
+
+llm = MockLLM()
+# llm.generate(prompt) returns predefined responses based on prompt content
+# Tracks call_count for test assertions
+```
+
+### Test Datasets
+
+Mock datasets in `mock_datasets/` provide realistic test cases:
+
+- `climate_change_hallucinated.json` — 6 document chunks, 123-word answer with 5 claims
+  (5.7°C vs 2-4°C, IPCC 2024 vs 2023, Arctic ice-free by 2035 vs 2040-2060)
+- `renewable_energy_supported.json` — 6 document chunks, 124-word answer with 6 claims
+  (30%, 42%, 89%, 340 GW — all supported by documents)
+
+### Running Examples
 
 ```bash
 python example_usage.py

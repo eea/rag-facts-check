@@ -11,13 +11,14 @@ Key features:
 - Evidence-first multi-step prompting
 - Self-consistency (multiple verification runs)
 - Multi-dimensional scoring (groundedness, contradiction_rate, etc.)
-- Span-level verification (document_id and chunk_id)
+- Span-level verification (document_id and chunk_id in results)
 """
 
 from .models import Claim, VerificationResult, CheckReport
-from .llm import LLM, HuggingFaceLLM, APILLM, ChatLLM, MockLLM
+from .llm import LLM, HuggingFaceLLM, APILLM, ChatLLM
 from .retriever import EvidenceRetriever, DocumentChunk
 from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
+from .testing import MockLLM
 
 __all__ = [
     "Claim",
