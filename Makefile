@@ -24,7 +24,7 @@ help:
 gen:
 	$(PYTHON) $(GEN) --topics $(TOPIC) --hallucination-rate 0.5 -n 1 \
 		--num-docs 6 --doc-chunk-size 80 \
-		-o $(DATASETS)/$(TOPIC)_generated.jsonl --verbose
+		-o $(DATASETS)/$(TOPIC)_generated.json --verbose
 
 ## gen-all: Generate datasets for all topics
 gen-all:

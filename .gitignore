@@ -34,3 +34,7 @@ report.json
 htmlcov/
 .tox/
 .cache/
+
+# Generated datasets (JSONL output from generator)
+mock_datasets/*_generated.jsonl
+mock_datasets/all_*.jsonl

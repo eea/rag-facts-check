@@ -415,8 +415,14 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w") as f:
-        for sample in samples:
-            f.write(json.dumps(sample) + "\n")
+        if len(samples) == 1:
+            # Single sample: pretty-printed JSON
+            json.dump(samples[0], f, indent=2)
+            f.write("\n")
+        else:
+            # Multiple samples: JSONL
+            for sample in samples:
+                f.write(json.dumps(sample) + "\n")
 
     # Summary
     h_count = sum(1 for s in samples if s["metadata"]["has_hallucination"])
