@@ -1,14 +1,6 @@
 # RAG Facts Check — Makefile
 #
 # Requires .env with LLM config (copy .env.example to .env).
-#
-# Usage:
-#   make gen TOPIC=climate_change              # Generate dataset
-#   make gen-all                                # Generate all topics
-#   make check DATASET=climate_change_hallucinated
-#   make check-all                              # Check all datasets
-#   make test                                   # Run tests
-#   make example                                # Run example_usage.py
 
 PYTHON := python3
 GEN := .agents/skills/synth-rag-dataset/scripts/generate_dataset.py
@@ -17,6 +9,18 @@ DATASETS := mock_datasets
 
 TOPIC ?= pollution
 DATASET ?= climate_change_hallucinated
+
+.PHONY: help
+help:
+	@echo "Usage:"
+	@echo "  make gen TOPIC=climate_change              Generate dataset"
+	@echo "  make gen-all                                Generate all topics"
+	@echo "  make check DATASET=climate_change_hallucinated"
+	@echo "  make check-all                              Check all datasets"
+	@echo "  make test                                   Run tests"
+	@echo "  make example                                Run example_usage.py"
+	@echo "  make list                                   List datasets"
+	@echo "  make clean                                  Clean generated files"
 
 # ─── Dataset Generation ──────────────────────────────────────────────────────
 
