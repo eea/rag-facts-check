@@ -1,16 +1,19 @@
 {
-  "question": "What is the projected global temperature increase by 2100 according to the latest IPCC report?",
-  "answer": "The IPCC's 2024 Sixth Assessment Report projects a global temperature increase of 5.7°C by 2100 under current emission trajectories, with some models suggesting it could reach as high as 6.2°C if mitigation efforts remain insufficient.",
+  "question": "What are the projected global temperature increases by 2100 under different emission scenarios, and what are the key climate impacts expected in the Arctic region?",
+  "answer": "According to the IPCC's 2024 Sixth Assessment Report, global temperatures are projected to rise by 5.7°C by 2100 under current emission trajectories (SSP3-7.0), with some models suggesting it could reach as high as 6.2°C if mitigation efforts remain insufficient. The Arctic is experiencing warming at three times the global average rate, with winter temperatures rising by 7.1°C since 1980. Sea ice extent has declined by 13% per decade, and the Greenland Ice Sheet is losing approximately 280 billion tons of ice annually. These changes are driving more frequent and intense heatwaves, altering precipitation patterns, and triggering widespread ecosystem shifts. The report warns that if emissions continue unabated, the Arctic could be ice-free during summer months by 2035, a decade earlier than previous estimates.",
   "documents": [
-    "The IPCC Sixth Assessment Report (2023) projects a global temperature increase of 1.5°C by 2040 under moderate emission scenarios (SSP2-4.5).",
-    "Current climate models estimate a 2-4°C rise by the end of the century if emissions continue at current rates (SSP3-7.0).",
-    "Arctic sea ice extent has declined by approximately 13% per decade since satellite observations began in 1979, consistent with global warming trends.",
-    "The Paris Agreement aims to limit warming to well below 2°C, with efforts to restrict it to 1.5°C above pre-industrial levels."
+    "The IPCC Sixth Assessment Report (2023) projects a global temperature increase of 1.5°C by 2040 under moderate emission scenarios (SSP2-4.5). Under high emission scenarios (SSP3-7.0), the increase is estimated at 2-4°C by the end of the century. The report emphasizes that limiting warming to 1.5°C requires global CO2 emissions to peak before 2025 and decline by 43% by 2030.",
+    "Arctic amplification causes the region to warm at approximately twice the global average rate. Satellite data from 1979 to 2023 shows Arctic sea ice extent declining by about 13% per decade in September, the month with minimum extent. The rate of decline has accelerated in recent years, particularly in the Barents and Kara Seas.",
+    "The Greenland Ice Sheet has been losing mass at an increasing rate, with recent measurements indicating approximately 280 billion tons of ice loss per year between 2010 and 2020. This contributes roughly 0.8 millimeters annually to global sea level rise. The West Antarctic Ice Sheet is also showing signs of accelerated melting, particularly in the Amundsen and Pine Island glaciers.",
+    "Climate models project that the Arctic could become virtually ice-free during summer months between 2040 and 2060 under intermediate emission scenarios, according to the IPCC's medium-confidence assessment. Earlier projections from the Fifth Assessment Report suggested a timeframe of 2060-2100. The shift is driven by feedback mechanisms including albedo reduction from ice-albedo feedback and increased heat transport from lower latitudes.",
+    "The Paris Agreement, adopted in 2015, aims to limit global warming to well below 2°C above pre-industrial levels, with efforts to restrict the increase to 1.5°C. As of 2023, countries' nationally determined contributions (NDCs) are insufficient to meet these targets, with projected warming of approximately 2.5-2.9°C by 2100 if current policies remain unchanged. Achieving the 1.5°C target requires immediate and far-reaching transitions in energy, urban, and industrial systems.",
+    "Arctic ecosystems are undergoing rapid transformation due to climate change. Permafrost thaw is releasing stored carbon and methane, creating a positive feedback loop that accelerates warming. Vegetation zones are shifting northward, with shrub expansion replacing tundra in many areas. Wildlife populations, particularly ice-dependent species like polar bears and walruses, are facing habitat loss and declining access to prey. The timing of seasonal events, such as migration and breeding, is shifting, disrupting ecological relationships."
   ],
   "metadata": {
     "topic": "climate_change",
     "has_hallucination": true,
     "hallucination_type": "fabricated_statistics",
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "hallucination_details": "The answer claims 5.7°C warming by 2100 (vs 2-4°C in documents), cites 'IPCC 2024' report (vs 2023), and states Arctic could be ice-free by 2035 (vs 2040-2060)"
   }
 }

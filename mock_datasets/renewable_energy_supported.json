@@ -1,16 +1,25 @@
 {
-  "question": "What percentage of global electricity generation comes from renewable sources, and which technologies lead this growth?",
-  "answer": "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth. The International Renewable Energy Agency (IRENA) projects that renewables will reach 42% of global electricity by 2028, driven by rapidly declining costs and improved grid integration capabilities.",
+  "question": "What is the current global adoption rate of renewable energy, which technologies are leading growth, and what are the projected trends for solar and wind power through 2028?",
+  "answer": "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar photovoltaic and onshore wind leading the growth. Solar PV alone contributed approximately 4.6 terawatts of new capacity additions, representing the largest single increase in any energy source. The International Renewable Energy Agency (IRENA) projects that renewables will reach 42% of global electricity generation by 2028, driven by rapidly declining costs and improved grid integration capabilities. Battery storage costs have fallen by 89% since 2010, enabling greater penetration of variable renewables. China, the United States, and India are the top three markets for renewable energy investment, collectively accounting for 70% of global renewable capacity additions. By 2028, solar PV is expected to become the largest source of electricity globally, surpassing coal.",
   "documents": [
-    "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth.",
-    "The International Renewable Energy Agency (IRENA) projects renewables will reach 42% of global electricity by 2028.",
-    "Battery storage costs have fallen by 89% since 2010, enabling greater grid integration of variable renewables.",
-    "Solar photovoltaic capacity additions reached 340 GW globally in 2023, representing the largest increase in renewable capacity."
+    "In 2023, renewable energy sources accounted for 30% of global electricity generation, with solar and wind leading the growth. Solar photovoltaic (PV) capacity additions reached 340 gigawatts globally, representing the largest increase in renewable capacity. Onshore wind contributed an additional 110 gigawatts, while hydropower remained the largest single source of renewable electricity at 940 gigawatts total installed capacity.",
+    "The International Renewable Energy Agency (IRENA) projects that renewables will reach 42% of global electricity by 2028 under current policy frameworks. This growth is driven by continued cost reductions, with the levelized cost of electricity (LCOE) for utility-scale solar PV declining by 89% since 2010 and onshore wind by 69% over the same period. Grid-scale battery storage costs have also fallen dramatically, enabling better integration of variable renewables.",
+    "China dominated global renewable energy investment in 2023, accounting for 38% of total global capacity additions. The United States followed with 17% of new capacity, driven by the Inflation Reduction Act's tax incentives for clean energy. India ranked third with 12% of global additions, primarily in solar PV. Collectively, these three markets accounted for 67% of all new renewable energy installations worldwide.",
+    "Battery storage costs have fallen by 89% since 2010, enabling greater grid integration of variable renewables. In 2023, global battery storage deployments reached 12 gigawatt-hours, a 150% increase from the previous year. Grid-scale storage is particularly critical for managing the intermittency of solar and wind power, ensuring stable supply during peak demand periods and reducing reliance on fossil fuel backup generation.",
+    "Solar PV is projected to become the largest source of electricity globally by 2028, surpassing coal-fired generation. IRENA's 2023 World Energy Transitions Outlook forecasts that solar PV will account for 25% of global electricity generation by 2030, with an additional 3,800 gigawatts of solar capacity expected to come online between 2023 and 2030. This rapid deployment is driven by continued cost reductions, supportive policies, and increasing demand for clean energy.",
+    "Offshore wind capacity reached 60 gigawatts globally by the end of 2023, with China, the United Kingdom, and Germany leading installations. The Global Wind Energy Council projects that offshore wind capacity will reach 380 gigawatts by 2030, representing a compound annual growth rate of 12%. Floating offshore wind technology is emerging as a key solution for deeper water sites, with several demonstration projects now operational in Norway, Scotland, and Japan."
   ],
   "metadata": {
     "topic": "renewable_energy",
     "has_hallucination": false,
     "hallucination_type": null,
-    "difficulty": "medium"
+    "difficulty": "medium",
+    "supported_claims": [
+      "30% of global electricity from renewables in 2023",
+      "IRENA projects 42% by 2028",
+      "Battery storage costs fell 89% since 2010",
+      "Solar PV capacity additions of 340 GW in 2023",
+      "China, US, India account for 67% of new capacity"
+    ]
   }
 }
