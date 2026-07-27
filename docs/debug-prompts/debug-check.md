@@ -1,7 +1,7 @@
 # Debug Command: `debug-check`
 
-**Phase:** Full fact-checking pipeline (extraction → retrieval → verification → aggregation)  
-**LLM calls:** 1 per claim (or 1 × `num_consistency_runs` per claim)  
+**Phase:** Full fact-checking pipeline (extraction → retrieval → verification → aggregation)
+**LLM calls:** 1 per claim (or 1 × `num_consistency_runs` per claim)
 **Purpose:** Run the complete RAG fact-checking pipeline for a single answer with debug checks and per-claim diagnostics
 
 ---
@@ -49,16 +49,38 @@ python .agents/skills/rag-facts-check/scripts/run_check.py \
 |--------|----------|-------------|
 | `--answer TEXT` | Yes (or `--answer-file`) | The RAG-generated answer to verify (inline string) |
 | `--answer-file PATH` | Yes (or `--answer`) | Path to a file containing the answer text |
-| `--documents TEXT` | Yes (or `--documents-file`) | Source document text (inline string, single document) |
-| `--documents-file PATH` | Yes (or `--documents`) | Path to a JSON file containing documents as a list of strings |
+| `--documents TEXT` | Yes (or `--documents-file`) | Source document text (inline string). Can be specified multiple times. |
+| `--documents-file PATH` | Yes (or `--documents`) | Path to a JSON file. Accepts: list of strings, list of `{"doc_id", "title?", "text"}` dicts, or `{"documents": [...]}` wrapper |
 | `--output PATH` | No | Output file path for the JSON report (default: `report.json`) |
 | `--num-consistency-runs N` | No | Number of verification runs for self-consistency (default: 1) |
 | `--evidence-first` | No | Use evidence-first multi-step prompting (default: off) |
+| `--use-evidence-retrieval` | No | Enable evidence retrieval (default: on) |
 | `--no-evidence-retrieval` | No | Disable evidence retrieval — pass all documents to verifier |
 | `--max-claims N` | No | Maximum number of claims to verify (limits latency) |
 | `--max-new-tokens N` | No | Maximum tokens for LLM generation (default: 512) |
 | `--mock` | No | Use MockLLM for testing (no real LLM required) |
 | `--verbose`, `-v` | No | Enable verbose output |
+
+---
+
+## Document Format
+
+Documents can be passed as plain strings or structured dicts:
+
+```json
+// Plain strings (backward-compatible)
+["Paris is the capital of France.", "The Eiffel Tower was built in 1889."]
+
+// Structured (recommended — title flows through to verification)
+[
+  {"doc_id": "doc_1", "title": "Paris overview", "text": "Paris is the capital..."},
+  {"doc_id": "doc_2", "title": "Eiffel Tower", "text": "The Eiffel Tower was..."}
+]
+```
+
+When `title` is provided, it is prepended to each retrieved chunk so the LLM
+has source context during verification. The `doc_id` flows through to
+`document_id` in per-claim results.
 
 ---
 
@@ -120,7 +142,7 @@ The following checks are available (controlled by flags):
 | Check | Flag | What it verifies |
 |-------|------|-----------------|
 | Claim extraction | (always) | Claims are properly extracted from the answer |
-| Evidence retrieval | `--evidence-first` | Relevant document chunks are retrieved per claim |
+| Evidence retrieval | `--use-evidence-retrieval` | Relevant document chunks are retrieved per claim |
 | Verification | (always) | Each claim is verified with verdict, confidence, evidence |
 | Self-consistency | `--num-consistency-runs N` | Multiple runs produce consistent results |
 | Multi-dimensional scoring | (always) | Groundedness, contradiction rate, hallucination rate computed |
@@ -218,6 +240,7 @@ With `num_consistency_runs > 1`, the verifier runs multiple times with increasin
 - **Lexical retrieval only**: The default `EvidenceRetriever` uses keyword overlap. For better retrieval, implement an embedding-based retriever
 - **Single answer only**: This command processes one answer at a time — not a batch evaluator
 - **No `--prompt-file`**: Prompt iteration is done by editing `prompts.py` directly
+- **CLI uses MockLLM only**: The CLI script requires `--mock`. For real LLM, use the `POST /check` web service endpoint
 
 ---
 
