@@ -12,14 +12,9 @@ Step 3: Verdict
 Classify the claim as:
 - SUPPORTED: Evidence clearly supports the claim
 - CONTRADICTED: Evidence clearly contradicts the claim
-- NOT ENOUGH INFO: Evidence is insufficient to determine
+- NOT_ENOUGH_INFO: Evidence is insufficient to determine
 
 Step 4: Output
-Provide your response in the EXACT format below:
+Return JSON with fields: verdict, confidence, evidence, explanation.
 
-VERDICT: [SUPPORTED|CONTRADICTED|NOT ENOUGH INFO]
-CONFIDENCE: [0-100]
-EVIDENCE: [exact quote from source documents, or "N/A"]
-EXPLANATION: [brief explanation, max 2 sentences]
-
-Be strict: if the evidence is ambiguous or indirect, lean toward "NOT ENOUGH INFO".
+Be strict: if the evidence is ambiguous or indirect, lean toward NOT_ENOUGH_INFO.

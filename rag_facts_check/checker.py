@@ -10,6 +10,7 @@ Enhancements over the base implementation:
 - Span-level verification (document_id and chunk_id in results)
 """
 
+import json
 import logging
 import re
 from collections import Counter
@@ -17,6 +18,7 @@ from collections import Counter
 from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
+    CLAIM_EXTRACTION_SYSTEM,
     format_claim_extraction_prompt,
     format_claim_verification_evidence_first_prompt,
     format_claim_verification_prompt,
@@ -26,12 +28,16 @@ from .spans import find_evidence_span, find_span_in_text
 
 log = logging.getLogger("rag_facts_check")
 
+# Max retry rounds for claim extraction refinement
+_MAX_EXTRACTION_RETRIES = 3
+
 
 class ClaimExtractor:
     """Extracts atomic factual claims from a RAG-generated answer.
 
     Uses an LLM to parse the answer and identify individual verifiable
-    statements.
+    statements. Supports multi-turn refinement: if a claim's original_text
+    cannot be located in the answer, the extractor asks the LLM to fix it.
     """
 
     def __init__(self, llm: LLM, max_new_tokens: int = 512):
@@ -40,6 +46,9 @@ class ClaimExtractor:
 
     async def extract(self, answer: str) -> list[Claim]:
         """Extract factual claims from *answer*.
+
+        Uses multi-turn refinement: claims whose original_text cannot be
+        found in the answer are sent back to the LLM for correction.
 
         Args:
             answer: The RAG-generated answer text.
@@ -50,6 +59,7 @@ class ClaimExtractor:
         if not answer or not answer.strip():
             return []
 
+        # Round 1: initial extraction
         prompt = format_claim_extraction_prompt(answer)
         response = await self.llm.generate(
             prompt,
@@ -58,32 +68,152 @@ class ClaimExtractor:
         )
 
         log.debug("extract: LLM response (%d chars): %s", len(response), response[:500])
-        claims = self._parse_claims(response)
+        raw_claims = self._parse_extraction_response(response)
+
+        # Multi-turn refinement: fix claims whose original_text isn't in answer
+        for attempt in range(1, _MAX_EXTRACTION_RETRIES + 1):
+            matched, unmatched = self._split_by_span(raw_claims, answer)
+            if not unmatched:
+                break  # all claims have matchable original_text
+
+            log.info(
+                "extract: %d/%d claims need refinement (attempt %d)",
+                len(unmatched), len(raw_claims), attempt,
+            )
+            refined = await self._refine_claims(answer, unmatched)
+            # Merge: keep matched, replace unmatched with refined
+            raw_claims = matched + refined
+
+        claims = self._to_claim_objects(raw_claims)
         log.info("extract: %d claims extracted", len(claims))
         return claims
 
-    def _parse_claims(self, response: str) -> list[Claim]:
-        """Parse the LLM response into a list of claims.
+    def _parse_extraction_response(self, response: str) -> list[dict[str, str]]:
+        """Parse LLM response into list of {claim, original_text} dicts.
 
-        Expected format: "CLAIM N: <text>" per line.
+        Handles both JSON output (structured) and legacy CLAIM N: format.
         """
+        # Try JSON first
+        claims = self._try_parse_json(response)
+        if claims:
+            return claims
+
+        # Fall back to legacy CLAIM N: format
+        return self._parse_legacy_format(response)
+
+    def _try_parse_json(self, response: str) -> list[dict[str, str]]:
+        """Try to parse response as JSON with claims array."""
+        # Strip markdown code fences if present
+        text = response.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return []
+
+        claims = []
+        items = data.get("claims", []) if isinstance(data, dict) else []
+        for item in items:
+            if isinstance(item, dict):
+                claim_text = item.get("claim", "")
+                original = item.get("original_text", item.get("original", ""))
+                if claim_text:
+                    claims.append({"claim": claim_text, "original_text": original or claim_text})
+        return claims
+
+    def _parse_legacy_format(self, response: str) -> list[dict[str, str]]:
+        """Parse legacy CLAIM N: format (no original_text available)."""
         claims = []
         lines = response.strip().split("\n")
-
         for line in lines:
             line = line.strip()
             match = re.match(r"^CLAIM\s+(\d+):\s*(.+)$", line, re.IGNORECASE)
             if match:
-                index = int(match.group(1))
                 text = match.group(2).strip()
                 if text:
-                    claims.append(Claim(text=text, index=index))
-
-        # If no claims were parsed, try to interpret the response as a single claim
+                    claims.append({"claim": text, "original_text": text})
+        # If no claims parsed, try whole response as single claim
         if not claims and response.strip() and "NO CLAIMS" not in response.upper():
-            claims.append(Claim(text=response.strip(), index=1))
-
+            claims.append({"claim": response.strip(), "original_text": response.strip()})
         return claims
+
+    def _split_by_span(
+        self, raw: list[dict[str, str]], answer: str
+    ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+        """Split claims into those whose original_text is found in answer and those that aren't."""
+        matched, unmatched = [], []
+        for item in raw:
+            orig = item.get("original_text", "")
+            if orig and self._find_in_answer(orig, answer) is not None:
+                matched.append(item)
+            else:
+                unmatched.append(item)
+        return matched, unmatched
+
+    def _find_in_answer(self, text: str, answer: str) -> tuple[int, int] | None:
+        """Find text in answer, returning (start, end) or None."""
+        return find_span_in_text(text, answer)
+
+    async def _refine_claims(
+        self, answer: str, unmatched: list[dict[str, str]]
+    ) -> list[dict[str, str]]:
+        """Ask the LLM to fix claims whose original_text wasn't found in the answer.
+
+        Sends the original answer + the problematic claims + feedback about
+        which original_text values failed, and asks the LLM to redo them
+        with exact verbatim text from the answer.
+        """
+        # Build list of problematic claims with feedback
+        problems = []
+        for i, item in enumerate(unmatched, 1):
+            problems.append(
+                f"  {i}. claim=\"{item['claim']}\" "
+                f"original_text=\"{item.get('original_text', '')}\" "
+                f"(NOT FOUND in answer)"
+            )
+        problems_text = "\n".join(problems)
+
+        refinement_prompt = (
+            f"{CLAIM_EXTRACTION_SYSTEM}\n\n"
+            f"You previously extracted these claims, but their original_text "
+            f"fragments were NOT found in the answer. The LLM likely paraphrased "
+            f"the original_text instead of quoting it verbatim.\n\n"
+            f"Problematic claims:\n{problems_text}\n\n"
+            f"Please re-extract ONLY these claims. For each, provide:\n"
+            f"- claim: the factual statement (rephrasing OK)\n"
+            f"- original_text: the EXACT verbatim text from the answer below. "
+            f"It MUST appear word-for-word in the answer.\n\n"
+            f"Answer:\n{answer}\n\n"
+            f"Return JSON with claims array and has_claims boolean."
+        )
+
+        response = await self.llm.generate(
+            refinement_prompt,
+            max_new_tokens=self.max_new_tokens,
+            temperature=0.1,
+        )
+
+        log.debug("extract refine: LLM response (%d chars): %s", len(response), response[:500])
+        return self._parse_extraction_response(response)
+
+    def _to_claim_objects(self, raw: list[dict[str, str]]) -> list[Claim]:
+        """Convert raw dicts to Claim objects."""
+        return [
+            Claim(
+                text=item["claim"],
+                index=i + 1,
+                original_text=item.get("original_text", item["claim"]),
+            )
+            for i, item in enumerate(raw)
+        ]
+
+    def _parse_claims(self, response: str) -> list[Claim]:
+        """Legacy parser kept for backward compatibility."""
+        raw = self._parse_legacy_format(response)
+        return self._to_claim_objects(raw)
 
 
 class ClaimVerifier:
@@ -377,11 +507,19 @@ class RAGFactsChecker:
         # Step 1: Extract claims
         claims = await self.extractor.extract(answer)
 
-        # Compute claim spans in the original answer
+        # Compute claim spans in the original answer using original_text
+        # (exact verbatim fragment) for reliable matching, falling back to
+        # the rephrased claim text if original_text is not available.
         for claim in claims:
-            span = find_span_in_text(claim.text, answer)
+            search_text = claim.original_text or claim.text
+            span = find_span_in_text(search_text, answer)
             if span:
                 claim.span = Span(start=span[0], end=span[1])
+            else:
+                log.debug(
+                    "check: could not locate claim[%d] in answer: %s",
+                    claim.index, search_text[:80],
+                )
 
         if not claims:
             log.info("check: no claims extracted, returning no_claims report")

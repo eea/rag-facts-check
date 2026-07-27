@@ -5,7 +5,6 @@ Extract claims from the following text:
 Text:
 {text}
 
-List each claim on a separate line, prefixed with "CLAIM N: " where N is the claim number starting from 1.
-If there are no factual claims, output "NO CLAIMS".
-
-Claims:
+Return a JSON object with:
+- "claims": array of objects, each with "claim" (rephrased claim) and "original_text" (exact fragment)
+- "has_claims": boolean, true if any claims were found

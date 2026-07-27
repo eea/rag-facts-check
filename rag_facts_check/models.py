@@ -21,13 +21,15 @@ class Claim:
     """A single factual claim extracted from a RAG-generated answer.
 
     Attributes:
-        text: The claim text.
+        text: The claim text (may be rephrased for clarity).
         index: The 1-based index of the claim in the original answer.
+        original_text: Exact verbatim fragment from the answer (for span matching).
         span: Character offsets of the claim in the original answer.
     """
 
     text: str
     index: int
+    original_text: str = ""
     span: Span | None = None
 
 
@@ -96,6 +98,7 @@ class CheckReport:
                 {
                     "index": c.index,
                     "text": c.text,
+                    "original_text": c.original_text,
                     "span": ({"start": c.span.start, "end": c.span.end} if c.span else None),
                 }
                 for c in self.claims

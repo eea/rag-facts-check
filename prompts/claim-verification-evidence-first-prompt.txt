@@ -5,3 +5,5 @@ Claim:
 
 Source Documents:
 {documents}
+
+Return JSON: {{"verdict": "...", "confidence": 0-100, "evidence": "...", "explanation": "..."}}
