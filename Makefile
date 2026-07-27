@@ -32,15 +32,16 @@ help:
 
 # --- Setup ---
 
-## setup: Create venv and install project with dev deps
-setup:
-	@if [ ! -d $(VENV) ]; then $(UV) venv --python python3 $(VENV); else echo "Using existing $(VENV)"; fi
-	$(UV) pip install -p $(PYTHON) -e ".[test,dev]"
-
-## setup-server: Create venv and install project with server deps
-setup-server:
+## setup-dev: Create venv and install all dependencies (dev + test + server)
+setup-dev:
 	@if [ ! -d $(VENV) ]; then $(UV) venv --python python3 $(VENV); else echo "Using existing $(VENV)"; fi
 	$(UV) pip install -p $(PYTHON) -e ".[test,dev,server]"
+
+## setup: Create venv and install project with dev deps (alias for setup-dev)
+setup: setup-dev
+
+## setup-server: Create venv and install project with server deps (alias for setup-dev)
+setup-server: setup-dev
 
 ## install-hooks: Install git pre-commit hook (lint + format-check)
 install-hooks:

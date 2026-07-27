@@ -35,7 +35,7 @@ class ClaimExtractor:
         self.llm = llm
         self.max_new_tokens = max_new_tokens
 
-    def extract(self, answer: str) -> list[Claim]:
+    async def extract(self, answer: str) -> list[Claim]:
         """Extract factual claims from *answer*.
 
         Args:
@@ -48,7 +48,7 @@ class ClaimExtractor:
             return []
 
         prompt = format_claim_extraction_prompt(answer)
-        response = self.llm.generate(
+        response = await self.llm.generate(
             prompt,
             max_new_tokens=self.max_new_tokens,
             temperature=0.1,
@@ -117,7 +117,7 @@ class ClaimVerifier:
         self.num_consistency_runs = num_consistency_runs
         self.evidence_first = evidence_first
 
-    def verify(
+    async def verify(
         self,
         claim: Claim,
         documents: list[str] | list[dict[str, str]],
@@ -145,13 +145,13 @@ class ClaimVerifier:
             for i in range(self.num_consistency_runs):
                 # Vary temperature: 0.1, 0.2, 0.3, etc.
                 temp = 0.1 + (i * 0.1)
-                result = self._single_verify(claim, docs_to_verify, temperature=temp)
+                result = await self._single_verify(claim, docs_to_verify, temperature=temp)
                 results.append(result)
             return self._aggregate_consistency(claim, chunks, results)
         else:
-            return self._single_verify(claim, docs_to_verify, temperature=0.1)
+            return await self._single_verify(claim, docs_to_verify, temperature=0.1)
 
-    def _single_verify(
+    async def _single_verify(
         self,
         claim: Claim,
         documents: list[str],
@@ -163,7 +163,7 @@ class ClaimVerifier:
         else:
             prompt = format_claim_verification_prompt(claim.text, documents)
 
-        response = self.llm.generate(
+        response = await self.llm.generate(
             prompt,
             max_new_tokens=self.max_new_tokens,
             temperature=temperature,
@@ -352,7 +352,7 @@ class RAGFactsChecker:
             evidence_first=evidence_first,
         )
 
-    def check(
+    async def check(
         self,
         answer: str,
         documents: list[str] | list[dict[str, str]],
@@ -369,7 +369,7 @@ class RAGFactsChecker:
             results, multi-dimensional scores, and hallucination flags.
         """
         # Step 1: Extract claims
-        claims = self.extractor.extract(answer)
+        claims = await self.extractor.extract(answer)
 
         # Compute claim spans in the original answer
         for claim in claims:
@@ -415,7 +415,7 @@ class RAGFactsChecker:
             if chunks is not None:
                 relevant_chunks = self.retriever.retrieve(claim.text, chunks)
 
-            result = self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
+            result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 
             # Compute evidence span in source documents
             evidence_match = find_evidence_span(result.evidence, documents)

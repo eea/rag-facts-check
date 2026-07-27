@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0", "pytest-cov>=5.0"]
+test = ["pytest>=8.0", "pytest-cov>=5.0", "pytest-asyncio>=0.24.0"]
 dev = ["ruff>=0.9.0"]
 server = [
     "fastapi>=0.110.0",
@@ -45,3 +45,4 @@ markers = [
     "llm: tests that require a live LLM connection",
 ]
 addopts = ["-v", "--tb=short", "-m", "not llm"]
+asyncio_mode = "auto"

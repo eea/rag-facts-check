@@ -29,7 +29,7 @@ class MockLLM(LLM):
     def __init__(self):
         self.call_count = 0
 
-    def generate(
+    async def generate(
         self,
         prompt: str,
         max_new_tokens: int = 512,

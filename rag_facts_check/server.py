@@ -156,7 +156,7 @@ def create_app() -> FastAPI:
         ]
 
         try:
-            report = checker.check(
+            report = await checker.check(
                 answer=request.answer,
                 documents=documents,
             )
@@ -178,7 +178,7 @@ def create_app() -> FastAPI:
         documents = [{"doc_id": d.doc_id, "text": d.text} for d in request.documents]
 
         try:
-            report = checker.check(
+            report = await checker.check(
                 answer=request.answer,
                 documents=documents,
             )
