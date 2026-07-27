@@ -49,14 +49,13 @@ print(report.to_dict())
 ```
 rag_facts_check/
 ├── __init__.py       # Package exports
-├── models.py         # Data classes: Claim, VerificationResult, CheckReport
-├── llm.py            # LLM interface + adapters (HF, API, Chat)
+├── models.py         # Data classes: Claim, VerificationResult, CheckReport, Span
+├── llm.py            # LLM interface + adapters (HF, API, Chat, AsyncAPI)
 ├── prompts.py        # Prompt templates for extraction & verification
 ├── retriever.py      # Evidence retrieval (chunk-based lexical matching)
+├── spans.py          # Span matching (claim → answer, evidence → document)
 ├── checker.py        # Core pipeline: Extractor → Verifier → Aggregator
-└── testing/
-    ├── __init__.py   # Testing utilities exports
-    └── mocks.py      # MockLLM for testing without a real model
+└── server.py         # FastAPI web service (POST /check, POST /halloumi/generate)
 ```
 
 ```
@@ -147,6 +146,103 @@ checker = RAGFactsChecker(
 )
 ```
 
+## Web Service
+
+The package includes a FastAPI web service for async fact-checking from any client.
+
+### Installation
+
+```bash
+make setup-server    # Installs fastapi, uvicorn, httpx, python-dotenv
+```
+
+### Running the server
+
+```bash
+# Development (auto-reload)
+make serve
+
+# Production
+make serve-prod
+```
+
+The server reads LLM configuration from `.env`:
+
+```env
+LLM_API_BASE=http://localhost:4002/v1
+LLM_API_KEY=not-needed
+LLM_MODEL=gemma
+LLM_TEMPERATURE=0.1
+```
+
+### Endpoints
+
+#### `POST /check` — Full fact-checking report
+
+Request:
+
+```json
+{
+  "answer": "Paris is the capital of France.",
+  "documents": [
+    { "doc_id": "doc_1", "title": "Paris overview", "text": "Paris is the capital..." },
+    { "doc_id": "doc_2", "title": "Eiffel Tower", "text": "The Eiffel Tower..." }
+  ],
+  "options": {
+    "num_consistency_runs": 1,
+    "evidence_first": true,
+    "use_evidence_retrieval": true
+  }
+}
+```
+
+Response: Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_span` offsets), and `hallucination_flags`.
+
+#### `POST /halloumi/generate` — Halloumi-compatible endpoint
+
+Drop-in replacement for the existing halloumi middleware. Accepts the same request format and returns a response compatible with the frontend's `ClaimModal`, `ClaimSegments`, and `Citation` components.
+
+Request:
+
+```json
+{
+  "answer": "Paris is the capital of France.",
+  "sources": ["Paris is the capital...", "The Eiffel Tower..."]
+}
+```
+
+Response:
+
+```json
+{
+  "claims": [
+    {
+      "startOffset": 0,
+      "endOffset": 32,
+      "segmentIds": ["0"],
+      "score": 0.95,
+      "rationale": "Document states this explicitly."
+    }
+  ],
+  "segments": {
+    "0": { "startOffset": 0, "endOffset": 22 }
+  }
+}
+```
+
+#### `GET /health` — Health check
+
+Returns `{"status": "ok", "version": "0.2.0"}`.
+
+### Span-Level Grounding
+
+Both endpoints return character offsets for clickable highlighting:
+
+- **`claims[].span`**: `{start, end}` offsets in the original answer text
+- **`results[].evidence_span`**: `{start, end}` offsets in the source document text
+
+The client can use these to render clickable spans in the answer that link to highlighted evidence in the source documents.
+
 ## Output Format
 
 The `CheckReport` contains:
@@ -158,8 +254,8 @@ The `CheckReport` contains:
   - `contradiction_rate`: % of claims contradicted by documents
   - `hallucination_rate`: % of claims unsupported or contradicted
   - `completeness`: % of claims covered (same as groundedness without coverage analysis)
-- **`claims`**: List of extracted claims with indices
-- **`results`**: Per-claim verification results (verdict, confidence, evidence, explanation, document_id, chunk_id, consistency_score)
+- **`claims`**: List of extracted claims with indices and `span` (character offsets in the answer)
+- **`results`**: Per-claim verification results (verdict, confidence, evidence, explanation, document_id, chunk_id, consistency_score, evidence_span)
 - **`hallucination_flags`**: Claims that are contradicted or lack evidence
 - **`summary`**: Human-readable summary
 
@@ -249,6 +345,8 @@ Mock datasets in `mock_datasets/` provide realistic test cases:
   (5.7°C vs 2-4°C, IPCC 2024 vs 2023, Arctic ice-free by 2035 vs 2040-2060)
 - `renewable_energy_supported.json` — 6 document chunks, 124-word answer with 6 claims
   (30%, 42%, 89%, 340 GW — all supported by documents)
+- `phosphorus_eutrophication.json` — 6 EEA documents, 2400-char answer with 22+ claims
+  (real production data from the climate adapt chatbot)
 
 ### Running Examples
 
@@ -262,6 +360,7 @@ python example_usage.py
 - `torch` (for HuggingFaceLLM)
 - `transformers` (for HuggingFaceLLM)
 - `requests` (for APILLM)
+- `fastapi`, `uvicorn`, `httpx`, `python-dotenv` (for the web service — `pip install rag-facts-check[server]`)
 - Your local LLM backend of choice
 
 ## License
