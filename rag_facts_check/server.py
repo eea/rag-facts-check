@@ -65,6 +65,14 @@ class CheckRequest(BaseModel):
     options: CheckOptions | None = Field(None, description="Optional pipeline overrides")
 
 
+class HalloumiRequest(BaseModel):
+    """Request body for POST /halloumi/generate (halloumi-compatible)."""
+
+    answer: str = Field(..., description="RAG-generated answer to verify")
+    sources: list[str] = Field(..., description="Source document texts (plain strings)")
+    max_context_segments: int = Field(0, description="Max context segments (unused, for compat)")
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -129,6 +137,33 @@ def create_app() -> FastAPI:
         """Health check endpoint."""
         return {"status": "ok", "version": "0.2.0"}
 
+    @app.post("/halloumi/generate")
+    async def halloumi_generate(request: HalloumiRequest) -> dict:
+        """Halloumi-compatible endpoint for claim verification.
+
+        Accepts the same request format as the halloumi middleware and
+        returns a response in halloumi's format so the existing frontend
+        components work without changes.
+
+        Request: {"answer": "...", "sources": ["doc1...", "doc2..."]}
+        Response: {"claims": [...], "segments": {...}}
+        """
+        checker = _get_checker()
+
+        # Convert plain string sources to document dicts
+        documents = [
+            {"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(request.sources)
+        ]
+
+        try:
+            report = checker.check(
+                answer=request.answer,
+                documents=documents,
+            )
+            return _to_halloumi_format(report, request.sources)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
     @app.post("/check")
     async def check(request: CheckRequest) -> dict:
         """Run the fact-checking pipeline on a RAG answer.
@@ -156,3 +191,74 @@ def create_app() -> FastAPI:
 
 # Default app instance for uvicorn
 app = create_app()
+
+
+# ---------------------------------------------------------------------------
+# Halloumi response adapter
+# ---------------------------------------------------------------------------
+
+
+def _to_halloumi_format(report, sources: list[str]) -> dict:
+    """Convert a CheckReport to halloumi-compatible response format.
+
+    Halloumi format:
+    {
+      "claims": [
+        {
+          "startOffset": 12,
+          "endOffset": 58,
+          "segmentIds": ["0", "2"],
+          "score": 0.85,
+          "rationale": "..."
+        }
+      ],
+      "segments": {
+        "0": {"startOffset": 45, "endOffset": 92},
+        "2": {"startOffset": 200, "endOffset": 250}
+      }
+    }
+
+    The segments are computed from evidence_spans, mapped into the
+    joined sources string so the frontend can highlight them.
+    """
+    # Build a mapping from source index to start offset in joined string
+    source_offsets: list[int] = []
+    offset = 0
+    for src in sources:
+        source_offsets.append(offset)
+        offset += len(src) + 1  # +1 for the newline
+
+    segments: dict[str, dict[str, int]] = {}
+    claims: list[dict] = []
+
+    for result in report.results:
+        claim = report.claims[result.claim_index - 1]
+
+        # Build claim span
+        if not claim.span:
+            continue
+
+        # Build segment IDs from evidence spans
+        segment_ids: list[str] = []
+        if result.evidence_span:
+            seg_id = str(len(segments))
+            segments[seg_id] = {
+                "startOffset": result.evidence_span.start,
+                "endOffset": result.evidence_span.end,
+            }
+            segment_ids.append(seg_id)
+
+        # Map confidence (0-100) to score (0-1)
+        score = result.confidence / 100.0
+
+        claims.append(
+            {
+                "startOffset": claim.span.start,
+                "endOffset": claim.span.end,
+                "segmentIds": segment_ids,
+                "score": round(score, 4),
+                "rationale": result.explanation,
+            }
+        )
+
+    return {"claims": claims, "segments": segments}
