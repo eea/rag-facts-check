@@ -107,13 +107,13 @@ gen-all:
 	$(PYTHON) $(GEN) -n 10 --hallucination-rate 0.3 --num-docs 6 \
 		--doc-chunk-size 80 -o $(DATASETS)/all_generated.jsonl --verbose
 
-## check: Check a dataset (DATASET=, default: climate_change_hallucinated)
+## check: Check a dataset (make check DATASET_PATH=path/to/file.json)
 check:
-	$(PYTHON) $(CHK) $(DATASETS)/$(DATASET).json
+	$(PYTHON) $(CHK) $(or $(DATASET_PATH),$(DATASETS)/$(DATASET).json)
 
-## check-v: Check a dataset with detailed evidence (DATASET=)
+## check-v: Check a dataset with detailed evidence (make check-v DATASET_PATH=path/to/file.json)
 check-v:
-	$(PYTHON) $(CHK) --verbose $(DATASETS)/$(DATASET).json
+	$(PYTHON) $(CHK) --verbose $(or $(DATASET_PATH),$(DATASETS)/$(DATASET).json)
 
 ## check-all: Check all datasets
 check-all:
