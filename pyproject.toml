@@ -34,7 +34,7 @@ select = ["E", "F", "W", "I", "N", "B", "SIM", "UP"]
 [tool.ruff.lint.per-file-ignores]
 # Prompt strings and mock responses are long by design
 "rag_facts_check/prompts.py" = ["E501"]
-"rag_facts_check/testing/mocks.py" = ["E501"]
+"tests/mocks/*.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

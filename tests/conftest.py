@@ -10,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from rag_facts_check import EvidenceRetriever, MockLLM, RAGFactsChecker
+from rag_facts_check import EvidenceRetriever, RAGFactsChecker
 from rag_facts_check.models import Claim, VerificationResult
+from mocks.mock_llm import MockLLM
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 

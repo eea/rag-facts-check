@@ -18,7 +18,6 @@ from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
 from .llm import APILLM, LLM, AsyncAPILLM, ChatLLM, HuggingFaceLLM
 from .models import CheckReport, Claim, VerificationResult
 from .retriever import DocumentChunk, EvidenceRetriever
-from .testing import MockLLM
 
 __all__ = [
     "Claim",
@@ -29,7 +28,6 @@ __all__ = [
     "APILLM",
     "AsyncAPILLM",
     "ChatLLM",
-    "MockLLM",
     "EvidenceRetriever",
     "DocumentChunk",
     "ClaimExtractor",

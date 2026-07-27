@@ -7,7 +7,7 @@ allowing the full fact-checking pipeline to be tested without a real LLM.
 
 import re
 
-from ..llm import LLM
+from rag_facts_check.llm import LLM
 
 
 class MockLLM(LLM):
