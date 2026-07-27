@@ -174,9 +174,9 @@ class EvidenceRetriever:
 
         Args:
             documents: List of document strings, or list of dicts with
-                ``{"doc_id": ..., "text": ...}`` entries. When dicts are
-                provided, the user-supplied ``doc_id`` is preserved so it
-                flows through to verification results.
+                ``{"doc_id": ..., "text": ...}`` entries. Optional keys:
+                ``title`` (prepended to each chunk for context) and
+                ``doc_id`` (preserved through to verification results).
 
         Returns:
             List of :class:`DocumentChunk` objects.
@@ -186,15 +186,26 @@ class EvidenceRetriever:
             if isinstance(doc, dict):
                 doc_id = doc.get("doc_id", f"doc_{i + 1}")
                 text = doc["text"]
+                title = doc.get("title")
             else:
                 doc_id = f"doc_{i + 1}"
                 text = doc
-            doc_chunks = self._chunk_text(text, doc_id)
+                title = None
+            doc_chunks = self._chunk_text(text, doc_id, title=title)
             chunks.extend(doc_chunks)
         return chunks
 
-    def _chunk_text(self, text: str, doc_id: str) -> list[DocumentChunk]:
-        """Split a single document into chunks."""
+    def _chunk_text(self, text: str, doc_id: str, title: str | None = None) -> list[DocumentChunk]:
+        """Split a single document into chunks.
+
+        Args:
+            text: Document text.
+            doc_id: Document identifier.
+            title: Document title (prepended to each chunk for context).
+        """
+        # Build the title prefix
+        title_prefix = f"Title: {title}. " if title else ""
+
         # Split into sentences first
         sentences = re.split(r"(?<=[.!?])\s+", text.strip())
         chunks = []
@@ -207,7 +218,7 @@ class EvidenceRetriever:
             if current_word_count + sentence_words > self.chunk_size and current_chunk:
                 chunks.append(
                     DocumentChunk(
-                        text=current_chunk.strip(),
+                        text=title_prefix + current_chunk.strip(),
                         doc_id=doc_id,
                         chunk_id=chunk_id,
                     )
@@ -222,7 +233,7 @@ class EvidenceRetriever:
         if current_chunk.strip():
             chunks.append(
                 DocumentChunk(
-                    text=current_chunk.strip(),
+                    text=title_prefix + current_chunk.strip(),
                     doc_id=doc_id,
                     chunk_id=chunk_id,
                 )

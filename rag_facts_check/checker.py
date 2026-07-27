@@ -119,14 +119,15 @@ class ClaimVerifier:
     def verify(
         self,
         claim: Claim,
-        documents: list[str],
+        documents: list[str] | list[dict[str, str]],
         chunks: list[DocumentChunk] | None = None,
     ) -> VerificationResult:
         """Verify a single claim against the source documents.
 
         Args:
             claim: The claim to verify.
-            documents: List of source document strings.
+            documents: List of source document strings, or list of dicts
+                with ``{"text": ..., "title": ...}`` entries.
             chunks: Pre-retrieved relevant document chunks. If provided,
                 only these chunks are used for verification.
 
@@ -395,8 +396,9 @@ class RAGFactsChecker:
         if self.use_evidence_retrieval and documents:
             chunks = self.retriever.chunk_documents(documents)
 
-        # Extract plain text from documents (may be dicts with doc_id)
-        doc_texts = [d["text"] if isinstance(d, dict) else d for d in documents]
+        # When evidence retrieval is disabled, pass original documents
+        # (may be dicts with title) so format_documents can include titles
+        docs_for_verifier = documents
 
         # Step 3: Verify each claim
         results = []
@@ -406,7 +408,7 @@ class RAGFactsChecker:
             if chunks is not None:
                 relevant_chunks = self.retriever.retrieve(claim.text, chunks)
 
-            result = self.verifier.verify(claim, doc_texts, chunks=relevant_chunks)
+            result = self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
             results.append(result)
 
         # Step 4: Aggregate

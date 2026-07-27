@@ -168,14 +168,16 @@ def format_claim_verification_evidence_first_prompt(claim: str, documents: list[
 
 
 def format_documents(
-    documents: list[str],
+    documents: list[str] | list[dict[str, str]],
     max_chars_per_doc: int = 2000,
     max_total_chars: int = 8000,
 ) -> str:
     """Format a list of documents into a single string for the LLM.
 
     Args:
-        documents: List of document strings.
+        documents: List of document strings, or list of dicts with
+            ``{"text": ..., "title": ...}`` entries. When dicts are
+            provided, the title is included as a header.
         max_chars_per_doc: Maximum characters per document (truncated).
         max_total_chars: Maximum total characters across all documents.
 
@@ -193,15 +195,23 @@ def format_documents(
             parts.append("\n[Remaining documents truncated to fit context window]")
             break
 
+        if isinstance(doc, dict):
+            text = doc["text"]
+            title = doc.get("title")
+            header = f"Document {i + 1}: {title}" if title else f"Document {i + 1}:"
+        else:
+            text = doc
+            header = f"Document {i + 1}:"
+
         # Truncate individual document
-        if len(doc) > max_chars_per_doc:
-            doc = doc[:max_chars_per_doc] + "... [truncated]"
+        if len(text) > max_chars_per_doc:
+            text = text[:max_chars_per_doc] + "... [truncated]"
 
         remaining = max_total_chars - total_chars
-        if len(doc) > remaining:
-            doc = doc[:remaining] + "... [truncated]"
+        if len(text) > remaining:
+            text = text[:remaining] + "... [truncated]"
 
-        parts.append(f"Document {i + 1}:\n{doc}\n")
-        total_chars += len(doc)
+        parts.append(f"{header}\n{text}\n")
+        total_chars += len(text)
 
     return "\n".join(parts)
