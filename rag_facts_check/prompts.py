@@ -1,86 +1,51 @@
 """
 Prompt templates for claim extraction and verification.
 
-These prompts are designed to work well with instruction-tuned local
-LLMs (Llama-2-Chat, Mistral-Instruct, Gemma, etc.).  Adjust the
-system context and examples as needed for your specific model.
+Prompts are stored as plain text files in the ``prompts/`` package directory
+so they can be reviewed and edited independently of the Python code.
+
+Template variables (substituted at runtime):
+- ``{system_prompt}`` — the system instruction for the phase
+- ``{text}`` — the answer text (extraction)
+- ``{claim}`` — the claim text (verification)
+- ``{documents}`` — formatted source documents (verification)
 """
+
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# File loader
+# ---------------------------------------------------------------------------
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+def _load(name: str) -> str:
+    """Load a prompt file from the ``prompts/`` directory."""
+    return (_PROMPTS_DIR / name).read_text(encoding="utf-8").rstrip("\n")
+
 
 # ---------------------------------------------------------------------------
 # Claim Extraction
 # ---------------------------------------------------------------------------
 
-CLAIM_EXTRACTION_SYSTEM = """You are an expert fact-checker. Your task is to extract all factual claims from the given text.
-
-A factual claim is a statement that can be verified as true or false based on evidence.
-Do NOT extract:
-- Opinions, beliefs, or subjective statements
-- Questions
-- General greetings or small talk
-- Statements that are clearly hypothetical
-- Meta-text about the answer itself
-
-Each claim should be:
-- Atomic (a single fact, not a compound statement with multiple facts)
-- Verifiable (can be checked against source documents)
-- Specific (not vague or general)
-
-If the text contains no factual claims, output "NO CLAIMS"."""
-
-CLAIM_EXTRACTION_PROMPT = """{system_prompt}
-
-Extract claims from the following text:
-
-Text:
-{text}
-
-List each claim on a separate line, prefixed with "CLAIM N: " where N is the claim number starting from 1.
-If there are no factual claims, output "NO CLAIMS".
-
-Claims:"""
+CLAIM_EXTRACTION_SYSTEM = _load("claim-extraction-system.txt")
+CLAIM_EXTRACTION_PROMPT = _load("claim-extraction-prompt.txt")
 
 
 def format_claim_extraction_prompt(text: str) -> str:
     """Build the full claim extraction prompt."""
-    return CLAIM_EXTRACTION_PROMPT.format(system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text)
+    return CLAIM_EXTRACTION_PROMPT.format(
+        system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text
+    )
 
 
 # ---------------------------------------------------------------------------
 # Claim Verification — Standard
 # ---------------------------------------------------------------------------
 
-CLAIM_VERIFICATION_SYSTEM = """You are an expert fact-checker. Your task is to verify whether a claim is supported by the provided source documents.
-
-For each claim, you must:
-1. Read the claim carefully
-2. Search through ALL source documents for relevant evidence
-3. Determine the verdict:
-   - SUPPORTED: The documents contain clear, direct evidence that the claim is true
-   - CONTRADICTED: The documents contain clear evidence that the claim is false
-   - NOT ENOUGH INFO: The documents do not contain sufficient information to verify the claim (neither support nor contradict)
-
-4. Quote the specific evidence from the documents
-5. Provide a confidence score (0-100)
-
-Be strict: if the evidence is ambiguous or indirect, lean toward "NOT ENOUGH INFO"."""
-
-CLAIM_VERIFICATION_PROMPT = """{system_prompt}
-
-Claim:
-{claim}
-
-Source Documents:
-{documents}
-
-Instructions:
-- Read the claim and the source documents carefully
-- Search for evidence that supports or contradicts the claim
-- Provide your response in the EXACT format below:
-
-VERDICT: [SUPPORTED|CONTRADICTED|NOT ENOUGH INFO]
-CONFIDENCE: [0-100]
-EVIDENCE: [exact quote from source documents, or "N/A" if not enough info]
-EXPLANATION: [brief explanation, max 2 sentences]"""
+CLAIM_VERIFICATION_SYSTEM = _load("claim-verification-system.txt")
+CLAIM_VERIFICATION_PROMPT = _load("claim-verification-prompt.txt")
 
 
 def format_claim_verification_prompt(claim: str, documents: list[str]) -> str:
@@ -105,42 +70,17 @@ def format_claim_verification_prompt(claim: str, documents: list[str]) -> str:
 # Claim Verification — Evidence-First (Multi-Step)
 # ---------------------------------------------------------------------------
 
-CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM = """You are an expert fact-checker. Your task is to verify whether a claim is supported by the provided source documents.
-
-Follow these steps in order:
-
-Step 1: Extract relevant evidence
-Read the source documents and extract any passages that are relevant to the claim. Quote them exactly.
-
-Step 2: Compare evidence to claim
-Compare the extracted evidence to the claim. Does the evidence support, contradict, or fail to address the claim?
-
-Step 3: Verdict
-Classify the claim as:
-- SUPPORTED: Evidence clearly supports the claim
-- CONTRADICTED: Evidence clearly contradicts the claim
-- NOT ENOUGH INFO: Evidence is insufficient to determine
-
-Step 4: Output
-Provide your response in the EXACT format below:
-
-VERDICT: [SUPPORTED|CONTRADICTED|NOT ENOUGH INFO]
-CONFIDENCE: [0-100]
-EVIDENCE: [exact quote from source documents, or "N/A"]
-EXPLANATION: [brief explanation, max 2 sentences]
-
-Be strict: if the evidence is ambiguous or indirect, lean toward "NOT ENOUGH INFO"."""
-
-CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = """{system_prompt}
-
-Claim:
-{claim}
-
-Source Documents:
-{documents}"""
+CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM = _load(
+    "claim-verification-evidence-first-system.txt"
+)
+CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = _load(
+    "claim-verification-evidence-first-prompt.txt"
+)
 
 
-def format_claim_verification_evidence_first_prompt(claim: str, documents: list[str]) -> str:
+def format_claim_verification_evidence_first_prompt(
+    claim: str, documents: list[str]
+) -> str:
     """Build the evidence-first multi-step verification prompt.
 
     This prompt explicitly asks the model to extract evidence first,

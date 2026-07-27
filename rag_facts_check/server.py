@@ -188,7 +188,8 @@ def create_app() -> FastAPI:
                 log.info("  claim[%d]: span=%s text=%s", i, c.span, c.text[:80])
             for i, r in enumerate(report.results):
                 log.info(
-                    "  result[%d]: verdict=%s confidence=%d span=%s", i, r.verdict, r.confidence, r.evidence_span
+                    "  result[%d]: verdict=%s confidence=%d span=%s",
+                    i, r.verdict, r.confidence, r.evidence_span,
                 )
             return _to_halloumi_format(report, sources, request.answer)
         except Exception as e:
@@ -302,5 +303,11 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
             }
         )
 
-    log.info("_to_halloumi: %d claims in output (of %d results, %d with spans)", len(claims), len(report.results), sum(1 for r in report.results if report.claims[r.claim_index - 1].span))
+    with_spans = sum(
+        1 for r in report.results if report.claims[r.claim_index - 1].span
+    )
+    log.info(
+        "_to_halloumi: %d claims in output (of %d results, %d with spans)",
+        len(claims), len(report.results), with_spans,
+    )
     return {"claims": claims, "segments": segments}

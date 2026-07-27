@@ -1,0 +1,11 @@
+{system_prompt}
+
+Extract claims from the following text:
+
+Text:
+{text}
+
+List each claim on a separate line, prefixed with "CLAIM N: " where N is the claim number starting from 1.
+If there are no factual claims, output "NO CLAIMS".
+
+Claims:

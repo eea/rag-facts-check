@@ -14,8 +14,6 @@ import logging
 import re
 from collections import Counter
 
-log = logging.getLogger("rag_facts_check")
-
 from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
@@ -25,6 +23,8 @@ from .prompts import (
 )
 from .retriever import DocumentChunk, EvidenceRetriever
 from .spans import find_evidence_span, find_span_in_text
+
+log = logging.getLogger("rag_facts_check")
 
 
 class ClaimExtractor:
