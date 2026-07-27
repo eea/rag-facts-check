@@ -9,10 +9,10 @@ import json
 from pathlib import Path
 
 import pytest
+from mocks.mock_llm import MockLLM
 
 from rag_facts_check import EvidenceRetriever, RAGFactsChecker
 from rag_facts_check.models import Claim, VerificationResult
-from mocks.mock_llm import MockLLM
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 

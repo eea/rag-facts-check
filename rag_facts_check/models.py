@@ -4,16 +4,31 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class Span:
+    """Character offset span within a text.
+
+    Attributes:
+        start: Start character offset (inclusive).
+        end: End character offset (exclusive).
+    """
+
+    start: int
+    end: int
+
+
+@dataclass
 class Claim:
     """A single factual claim extracted from a RAG-generated answer.
 
     Attributes:
         text: The claim text.
         index: The 1-based index of the claim in the original answer.
+        span: Character offsets of the claim in the original answer.
     """
 
     text: str
     index: int
+    span: Span | None = None
 
 
 @dataclass
@@ -41,6 +56,7 @@ class VerificationResult:
     document_id: str | None = None
     chunk_id: str | None = None
     consistency_score: float | None = None
+    evidence_span: Span | None = None
 
 
 @dataclass
@@ -76,7 +92,14 @@ class CheckReport:
             "overall_verdict": self.overall_verdict,
             "summary": self.summary,
             "dimensions": self.dimensions,
-            "claims": [{"index": c.index, "text": c.text} for c in self.claims],
+            "claims": [
+                {
+                    "index": c.index,
+                    "text": c.text,
+                    "span": ({"start": c.span.start, "end": c.span.end} if c.span else None),
+                }
+                for c in self.claims
+            ],
             "results": [
                 {
                     "claim_index": r.claim_index,
@@ -88,6 +111,14 @@ class CheckReport:
                     "document_id": r.document_id,
                     "chunk_id": r.chunk_id,
                     "consistency_score": r.consistency_score,
+                    "evidence_span": (
+                        {
+                            "start": r.evidence_span.start,
+                            "end": r.evidence_span.end,
+                        }
+                        if r.evidence_span
+                        else None
+                    ),
                 }
                 for r in self.results
             ],
@@ -102,6 +133,14 @@ class CheckReport:
                     "document_id": r.document_id,
                     "chunk_id": r.chunk_id,
                     "consistency_score": r.consistency_score,
+                    "evidence_span": (
+                        {
+                            "start": r.evidence_span.start,
+                            "end": r.evidence_span.end,
+                        }
+                        if r.evidence_span
+                        else None
+                    ),
                 }
                 for r in self.hallucination_flags
             ],

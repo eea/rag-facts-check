@@ -14,13 +14,14 @@ import re
 from collections import Counter
 
 from .llm import LLM
-from .models import CheckReport, Claim, VerificationResult
+from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
     format_claim_extraction_prompt,
     format_claim_verification_evidence_first_prompt,
     format_claim_verification_prompt,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
+from .spans import find_evidence_span, find_span_in_text
 
 
 class ClaimExtractor:
@@ -370,6 +371,12 @@ class RAGFactsChecker:
         # Step 1: Extract claims
         claims = self.extractor.extract(answer)
 
+        # Compute claim spans in the original answer
+        for claim in claims:
+            span = find_span_in_text(claim.text, answer)
+            if span:
+                claim.span = Span(start=span[0], end=span[1])
+
         if not claims:
             return CheckReport(
                 answer=answer,
@@ -409,6 +416,12 @@ class RAGFactsChecker:
                 relevant_chunks = self.retriever.retrieve(claim.text, chunks)
 
             result = self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
+
+            # Compute evidence span in source documents
+            evidence_match = find_evidence_span(result.evidence, documents)
+            if evidence_match:
+                result.evidence_span = Span(start=evidence_match[1], end=evidence_match[2])
+
             results.append(result)
 
         # Step 4: Aggregate
