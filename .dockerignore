@@ -1,0 +1,47 @@
+# Version control
+.git/
+.github/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Development
+.env
+.env.local
+AGENTS.md
+Makefile
+pytest.ini
+
+# Generated
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Documentation (not needed at runtime)
+docs/
+README.md
+
+# Mock datasets
+mock_datasets/
+
+# Scripts (not needed at runtime)
+scripts/
+
+# Agent skills
+.agents/
+
+# Example files
+example_usage.py
