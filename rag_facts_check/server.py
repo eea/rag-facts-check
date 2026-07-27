@@ -9,11 +9,21 @@ Usage::
     uvicorn rag_facts_check.server:app --host 0.0.0.0 --port 8000
 """
 
+import logging
 import os
+import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# Configure logging for development
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("rag_facts_check")
 
 
 def _load_env() -> dict[str, str]:
@@ -151,17 +161,38 @@ def create_app() -> FastAPI:
         checker = _get_checker()
 
         # Convert plain string sources to document dicts
+        sources = [s for s in request.sources if s.strip()]
         documents = [
-            {"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(request.sources)
+            {"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(sources)
         ]
+
+        log.info(
+            "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
+            len(request.answer),
+            len(request.sources),
+            len(sources),
+        )
 
         try:
             report = await checker.check(
                 answer=request.answer,
                 documents=documents,
             )
-            return _to_halloumi_format(report, request.sources)
+            log.info(
+                "halloumi/generate: claims=%d, results=%d, verdict=%s",
+                len(report.claims),
+                len(report.results),
+                report.overall_verdict,
+            )
+            for i, c in enumerate(report.claims):
+                log.info("  claim[%d]: span=%s text=%s", i, c.span, c.text[:80])
+            for i, r in enumerate(report.results):
+                log.info(
+                    "  result[%d]: verdict=%s confidence=%d span=%s", i, r.verdict, r.confidence, r.evidence_span
+                )
+            return _to_halloumi_format(report, sources, request.answer)
         except Exception as e:
+            log.exception("halloumi/generate error")
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/check")
@@ -198,7 +229,7 @@ app = create_app()
 # ---------------------------------------------------------------------------
 
 
-def _to_halloumi_format(report, sources: list[str]) -> dict:
+def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
     Halloumi format:
@@ -234,9 +265,19 @@ def _to_halloumi_format(report, sources: list[str]) -> dict:
     for result in report.results:
         claim = report.claims[result.claim_index - 1]
 
-        # Build claim span
-        if not claim.span:
-            continue
+        # Build claim span — if the LLM paraphrased the claim and no span
+        # was found, fall back to the full answer range so the claim is
+        # still included in the output.
+        if claim.span:
+            start_offset = claim.span.start
+            end_offset = claim.span.end
+        else:
+            log.debug(
+                "_to_halloumi: claim[%d] has no span (LLM paraphrased), using full answer range",
+                result.claim_index,
+            )
+            start_offset = 0
+            end_offset = len(answer_text)
 
         # Build segment IDs from evidence spans
         segment_ids: list[str] = []
@@ -253,12 +294,13 @@ def _to_halloumi_format(report, sources: list[str]) -> dict:
 
         claims.append(
             {
-                "startOffset": claim.span.start,
-                "endOffset": claim.span.end,
+                "startOffset": start_offset,
+                "endOffset": end_offset,
                 "segmentIds": segment_ids,
                 "score": round(score, 4),
                 "rationale": result.explanation,
             }
         )
 
+    log.info("_to_halloumi: %d claims in output (of %d results, %d with spans)", len(claims), len(report.results), sum(1 for r in report.results if report.claims[r.claim_index - 1].span))
     return {"claims": claims, "segments": segments}

@@ -89,9 +89,9 @@ example:
 
 # --- Server ---
 
-## serve: Start the FastAPI server (localhost:8000)
+## serve: Start the FastAPI server (localhost:8000, verbose)
 serve:
-	$(VENV)/bin/uvicorn rag_facts_check.server:app --reload --host 0.0.0.0 --port 8000
+	PYTHONDONTWRITEBYTECODE=1 $(VENV)/bin/uvicorn rag_facts_check.server:app --reload --host 0.0.0.0 --port 8000 --log-level info
 
 ## serve-prod: Start the server in production mode
 serve-prod:

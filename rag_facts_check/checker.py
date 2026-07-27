@@ -10,8 +10,11 @@ Enhancements over the base implementation:
 - Span-level verification (document_id and chunk_id in results)
 """
 
+import logging
 import re
 from collections import Counter
+
+log = logging.getLogger("rag_facts_check")
 
 from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
@@ -54,7 +57,10 @@ class ClaimExtractor:
             temperature=0.1,
         )
 
-        return self._parse_claims(response)
+        log.debug("extract: LLM response (%d chars): %s", len(response), response[:500])
+        claims = self._parse_claims(response)
+        log.info("extract: %d claims extracted", len(claims))
+        return claims
 
     def _parse_claims(self, response: str) -> list[Claim]:
         """Parse the LLM response into a list of claims.
@@ -378,6 +384,7 @@ class RAGFactsChecker:
                 claim.span = Span(start=span[0], end=span[1])
 
         if not claims:
+            log.info("check: no claims extracted, returning no_claims report")
             return CheckReport(
                 answer=answer,
                 overall_confidence=0.0,

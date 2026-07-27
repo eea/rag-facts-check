@@ -121,8 +121,8 @@ class TestToHalloumiFormat:
         result = _to_halloumi_format(report, [])
         assert result == {"claims": [], "segments": {}}
 
-    def test_claim_without_span_skipped(self):
-        """Claims without span info should be skipped."""
+    def test_claim_without_span_uses_full_answer_range(self):
+        """Claims without span info (LLM paraphrased) should use the full answer range."""
         report = CheckReport(
             answer="Some answer.",
             overall_confidence=50.0,
@@ -139,5 +139,7 @@ class TestToHalloumiFormat:
                 )
             ],
         )
-        result = _to_halloumi_format(report, ["Some source."])
-        assert result["claims"] == []
+        result = _to_halloumi_format(report, ["Some source."], "Some answer.")
+        assert len(result["claims"]) == 1
+        assert result["claims"][0]["startOffset"] == 0
+        assert result["claims"][0]["endOffset"] == 12  # len("Some answer.")
