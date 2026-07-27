@@ -1,3 +1,11 @@
+---
+type: Tool
+title: Debug Command — debug-check
+description: CLI debug pipeline reference for end-to-end fact-checking diagnostics.
+tags: [debug, cli, tool]
+timestamp: '2025-01-01T00:00:00Z'
+---
+
 # Debug Command: `debug-check`
 
 **Phase:** Full fact-checking pipeline (extraction → retrieval → verification → aggregation)

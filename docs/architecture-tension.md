@@ -1,6 +1,14 @@
+---
+type: Architecture
+title: Architecture Tension — Multi-Turn Conversations
+description: Design considerations for multi-turn chat scenarios.
+tags: [architecture, multi-turn, chat]
+timestamp: '2025-01-01T00:00:00Z'
+---
+
 # Architecture Tension: Multi-Turn Conversations
 
-> When to revisit: when the chatbot integrates multi-turn fact-checking.
+> **Update when:** the chatbot integrates multi-turn fact-checking.
 
 ## The core question
 
