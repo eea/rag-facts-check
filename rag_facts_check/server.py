@@ -285,6 +285,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         if result.evidence_span:
             seg_id = str(len(segments))
             segments[seg_id] = {
+                "id": int(seg_id),
                 "startOffset": result.evidence_span.start,
                 "endOffset": result.evidence_span.end,
             }
