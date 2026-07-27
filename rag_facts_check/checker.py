@@ -357,13 +357,62 @@ class ClaimVerifier:
         )
 
     def _parse_result(self, claim: Claim, response: str) -> VerificationResult:
-        """Parse the LLM verification response into a structured result."""
+        """Parse the LLM verification response into a structured result.
+
+        Handles both JSON output and legacy VERDICT:/CONFIDENCE: text format.
+        """
+        # Try JSON first
+        result = self._try_parse_json_result(claim, response)
+        if result is not None:
+            return result
+
+        # Fall back to legacy text format
+        return self._parse_text_result(claim, response)
+
+    def _try_parse_json_result(self, claim: Claim, response: str) -> VerificationResult | None:
+        """Try to parse response as JSON."""
+        text = response.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        # Map verdict variants
+        raw_verdict = str(data.get("verdict", "")).upper().strip()
+        if "SUPPORTED" in raw_verdict and "NOT" not in raw_verdict:
+            verdict = "supported"
+        elif "CONTRADICTED" in raw_verdict:
+            verdict = "contradicted"
+        else:
+            verdict = "not_enough_info"
+
+        confidence = min(100, max(0, int(data.get("confidence", 50))))
+        evidence = data.get("evidence", "N/A") or "N/A"
+        explanation = data.get("explanation", "") or ""
+
+        return VerificationResult(
+            claim=claim.text,
+            claim_index=claim.index,
+            verdict=verdict,
+            confidence=confidence,
+            evidence=evidence,
+            explanation=explanation,
+        )
+
+    def _parse_text_result(self, claim: Claim, response: str) -> VerificationResult:
+        """Parse legacy VERDICT:/CONFIDENCE: text format."""
         verdict = "not_enough_info"
         confidence = 50
         evidence = "N/A"
         explanation = ""
 
-        # Parse VERDICT
         verdict_match = re.search(r"VERDICT:\s*(.+?)(?:\n|$)", response, re.IGNORECASE)
         if verdict_match:
             raw_verdict = verdict_match.group(1).strip().upper()
@@ -376,12 +425,10 @@ class ClaimVerifier:
             elif "SUPPORTED" in raw_verdict:
                 verdict = "supported"
 
-        # Parse CONFIDENCE
         conf_match = re.search(r"CONFIDENCE:\s*(\d+)", response, re.IGNORECASE)
         if conf_match:
             confidence = min(100, max(0, int(conf_match.group(1))))
 
-        # Parse EVIDENCE
         evidence_match = re.search(
             r"EVIDENCE:\s*(.+?)(?:\n\n|\nEXPLANATION|\nVERDICT|\Z)",
             response,
@@ -390,7 +437,6 @@ class ClaimVerifier:
         if evidence_match:
             evidence = evidence_match.group(1).strip()
 
-        # Parse EXPLANATION
         expl_match = re.search(
             r"EXPLANATION:\s*(.+?)(?:\Z)",
             response,

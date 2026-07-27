@@ -1,5 +1,19 @@
 # AGENTS.md — Instructions for AI coding sessions
 
+## Greenfield project — no backward compatibility
+
+This is a greenfield project with no external consumers yet. **Do not preserve
+backward compatibility.** Feel free to:
+
+- Break public APIs, rename functions, change signatures
+- Refactor data models, drop fields, change serialization formats
+- Rewrite tests from scratch if the design changes
+- Drop unused code without deprecation warnings
+- Change prompt formats, output schemas, response structures
+
+The only "users" are the internal test suite and the FastAPI server endpoints.
+If tests break, fix them. If the server contract changes, update the client.
+
 ## Requirements interviews
 
 Before implementing anything underspecified, follow this protocol:
@@ -45,7 +59,7 @@ broken. Use per-file ignores instead of `# noqa`:
 
 - `[test]` — pytest, pytest-cov
 - `[dev]` — ruff
-- `[server]` — fastapi, uvicorn, httpx, python-dotenv
+- `[server]` — fastapi, uvicorn, httpx, python-dotenv, atomic-agents, instructor
 
 Install with `pip install -e ".[test,dev,server]"` or `make setup-server`.
 
