@@ -350,12 +350,17 @@ class RAGFactsChecker:
             evidence_first=evidence_first,
         )
 
-    def check(self, answer: str, documents: list[str]) -> CheckReport:
+    def check(
+        self,
+        answer: str,
+        documents: list[str] | list[dict[str, str]],
+    ) -> CheckReport:
         """Run the full fact-checking pipeline on a RAG answer.
 
         Args:
             answer: The RAG-generated answer to verify.
-            documents: List of source document strings retrieved by the RAG system.
+            documents: List of source document strings, or list of dicts
+                with ``{"doc_id": ..., "text": ...}`` entries.
 
         Returns:
             :class:`CheckReport` with overall confidence, verdict, per-claim
@@ -390,6 +395,9 @@ class RAGFactsChecker:
         if self.use_evidence_retrieval and documents:
             chunks = self.retriever.chunk_documents(documents)
 
+        # Extract plain text from documents (may be dicts with doc_id)
+        doc_texts = [d["text"] if isinstance(d, dict) else d for d in documents]
+
         # Step 3: Verify each claim
         results = []
         for claim in claims:
@@ -398,7 +406,7 @@ class RAGFactsChecker:
             if chunks is not None:
                 relevant_chunks = self.retriever.retrieve(claim.text, chunks)
 
-            result = self.verifier.verify(claim, documents, chunks=relevant_chunks)
+            result = self.verifier.verify(claim, doc_texts, chunks=relevant_chunks)
             results.append(result)
 
         # Step 4: Aggregate

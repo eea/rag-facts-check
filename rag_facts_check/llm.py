@@ -22,6 +22,13 @@ try:
 except ImportError:
     _HAS_REQUESTS = False
 
+try:
+    import httpx
+
+    _HAS_HTTPX = True
+except ImportError:
+    _HAS_HTTPX = False
+
 
 class LLM(ABC):
     """Abstract base class for LLM backends.
@@ -246,3 +253,88 @@ class ChatLLM(LLM):
     ) -> str:
         formatted = self._format_chat(prompt)
         return self.base_llm.generate(formatted, max_new_tokens, temperature, **kwargs)
+
+
+class AsyncAPILLM(LLM):
+    """Async adapter for HTTP-based LLM APIs using httpx.
+
+    Drop-in replacement for APILLM in async contexts (FastAPI, etc.).
+    Supports both completions and chat completions endpoints.
+
+    Example::
+
+        llm = AsyncAPILLM(
+            "http://localhost:4002/v1/chat/completions",
+            model_name="gemma",
+            chat_mode=True,
+        )
+    """
+
+    def __init__(
+        self,
+        api_url: str,
+        model_name: str | None = None,
+        api_key: str | None = None,
+        max_new_tokens: int = 512,
+        temperature: float = 0.1,
+        chat_mode: bool = False,
+    ):
+        if not _HAS_HTTPX:
+            raise ImportError("httpx is required for AsyncAPILLM")
+        self.api_url = api_url
+        self.model_name = model_name
+        self.api_key = api_key
+        self.max_new_tokens = max_new_tokens
+        self.temperature = temperature
+        self.chat_mode = chat_mode
+        self._client = httpx.AsyncClient(timeout=120.0)
+
+    async def generate(
+        self,
+        prompt: str,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
+        **kwargs,
+    ) -> str:
+        max_new_tokens = max_new_tokens or self.max_new_tokens
+        temperature = temperature if temperature is not None else self.temperature
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        if self.chat_mode:
+            payload = {
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
+        else:
+            payload = {
+                "prompt": prompt,
+                "max_tokens": max_new_tokens,
+                "temperature": temperature,
+                **kwargs,
+            }
+        if self.model_name:
+            payload["model"] = self.model_name
+
+        response = await self._client.post(self.api_url, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        # Handle different API response formats
+        if "choices" in data:
+            choice = data["choices"][0]
+            return choice.get("text", choice.get("message", {}).get("content", ""))
+        elif "generated_text" in data:
+            return data["generated_text"]
+        elif "response" in data:
+            return data["response"]
+        else:
+            return str(data)
+
+    async def close(self) -> None:
+        """Close the underlying httpx async client."""
+        await self._client.aclose()

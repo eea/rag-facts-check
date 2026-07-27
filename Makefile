@@ -37,6 +37,11 @@ setup:
 	@if [ ! -d $(VENV) ]; then $(UV) venv --python python3 $(VENV); else echo "Using existing $(VENV)"; fi
 	$(UV) pip install -p $(PYTHON) -e ".[test,dev]"
 
+## setup-server: Create venv and install project with server deps
+setup-server:
+	@if [ ! -d $(VENV) ]; then $(UV) venv --python python3 $(VENV); else echo "Using existing $(VENV)"; fi
+	$(UV) pip install -p $(PYTHON) -e ".[test,dev,server]"
+
 ## install-hooks: Install git pre-commit hook (lint + format-check)
 install-hooks:
 	@cp scripts/hooks/pre-commit .git/hooks/pre-commit
@@ -80,6 +85,16 @@ format-check:
 ## example: Run example_usage.py
 example:
 	$(PYTHON) example_usage.py
+
+# --- Server ---
+
+## serve: Start the FastAPI server (localhost:8000)
+serve:
+	$(VENV)/bin/uvicorn rag_facts_check.server:app --reload --host 0.0.0.0 --port 8000
+
+## serve-prod: Start the server in production mode
+serve-prod:
+	$(VENV)/bin/uvicorn rag_facts_check.server:app --host 0.0.0.0 --port 8000
 
 ## gen: Generate a dataset (TOPIC=, default: pollution)
 gen:

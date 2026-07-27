@@ -166,19 +166,30 @@ class EvidenceRetriever:
             "now",
         }
 
-    def chunk_documents(self, documents: list[str]) -> list[DocumentChunk]:
+    def chunk_documents(
+        self,
+        documents: list[str] | list[dict[str, str]],
+    ) -> list[DocumentChunk]:
         """Split documents into chunks of approximately *chunk_size* words.
 
         Args:
-            documents: List of document strings.
+            documents: List of document strings, or list of dicts with
+                ``{"doc_id": ..., "text": ...}`` entries. When dicts are
+                provided, the user-supplied ``doc_id`` is preserved so it
+                flows through to verification results.
 
         Returns:
             List of :class:`DocumentChunk` objects.
         """
         chunks = []
         for i, doc in enumerate(documents):
-            doc_id = f"doc_{i + 1}"
-            doc_chunks = self._chunk_text(doc, doc_id)
+            if isinstance(doc, dict):
+                doc_id = doc.get("doc_id", f"doc_{i + 1}")
+                text = doc["text"]
+            else:
+                doc_id = f"doc_{i + 1}"
+                text = doc
+            doc_chunks = self._chunk_text(text, doc_id)
             chunks.extend(doc_chunks)
         return chunks
 
