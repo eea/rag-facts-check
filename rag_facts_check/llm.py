@@ -6,18 +6,18 @@ works with any model backend.  Implement ``LLM`` for your specific
 local setup, or use one of the provided adapters.
 """
 
-import re
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 try:
     import torch
+
     _HAS_TORCH = True
 except ImportError:
     _HAS_TORCH = False
 
 try:
     import requests
+
     _HAS_REQUESTS = True
 except ImportError:
     _HAS_REQUESTS = False
@@ -93,8 +93,8 @@ class HuggingFaceLLM(LLM):
     def generate(
         self,
         prompt: str,
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
         **kwargs,
     ) -> str:
         max_new_tokens = max_new_tokens or self.max_new_tokens
@@ -123,7 +123,7 @@ class HuggingFaceLLM(LLM):
 
         # Strip the prompt from the output (model echoes it)
         if text.startswith(prompt):
-            text = text[len(prompt):]
+            text = text[len(prompt) :]
 
         return text.strip()
 
@@ -147,8 +147,8 @@ class APILLM(LLM):
     def __init__(
         self,
         api_url: str,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         max_new_tokens: int = 512,
         temperature: float = 0.1,
         chat_mode: bool = False,
@@ -165,8 +165,8 @@ class APILLM(LLM):
     def generate(
         self,
         prompt: str,
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
         **kwargs,
     ) -> str:
         max_new_tokens = max_new_tokens or self.max_new_tokens
@@ -199,7 +199,8 @@ class APILLM(LLM):
 
         # Handle different API response formats
         if "choices" in data:
-            return data["choices"][0].get("text", data["choices"][0].get("message", {}).get("content", ""))
+            choice = data["choices"][0]
+            return choice.get("text", choice.get("message", {}).get("content", ""))
         elif "generated_text" in data:
             return data["generated_text"]
         elif "response" in data:
@@ -245,11 +246,3 @@ class ChatLLM(LLM):
     ) -> str:
         formatted = self._format_chat(prompt)
         return self.base_llm.generate(formatted, max_new_tokens, temperature, **kwargs)
-
-
-# ─── Mock LLM ────────────────────────────────────────────────────────────────┐
-# MockLLM has been moved to rag_facts_check/testing/mocks.py for proper
-# separation of testing utilities from production code.
-# Import it via: from rag_facts_check.testing import MockLLM
-# ─────────────────────────────────────────────────────────────────────────────┘
-

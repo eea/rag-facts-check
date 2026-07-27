@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# pre-commit hook: run lint and format-check on staged Python files.
+#
+# Install: make install-hooks
+#
+# Only checks files that are actually staged for commit so the hook stays
+# fast on small commits.  If no Python files are staged the hook exits
+# immediately.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Determine which checks to run based on staged files
+# ---------------------------------------------------------------------------
+staged=$(git diff --cached --name-only --diff-filter=d)
+
+py_files=$(echo "$staged" | grep -E '\.py$' || true)
+makefile_or_toml=$(echo "$staged" | grep -E '(^Makefile$|^pyproject\.toml$)' || true)
+
+# If no Python files and no config, skip entirely
+if [ -z "$py_files" ] && [ -z "$makefile_or_toml" ]; then
+    exit 0
+fi
+
+# Resolve paths to the venv tools
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+RUFF="$PROJECT_ROOT/.venv/bin/ruff"
+
+# If .venv doesn't exist yet (fresh clone), skip
+if [ ! -x "$RUFF" ]; then
+    echo "⚠️  .venv not found — skipping pre-commit checks. Run 'make setup' first."
+    exit 0
+fi
+
+cd "$PROJECT_ROOT"
+
+failed=0
+
+# ---------------------------------------------------------------------------
+# Lint
+# ---------------------------------------------------------------------------
+if [ -n "$py_files" ]; then
+    echo "🔍 Running ruff check..."
+    if ! output=$($RUFF check rag_facts_check/ tests/ scripts/ 2>&1); then
+        echo "$output"
+        echo "❌  Lint failed. Fix with: make lint-fix"
+        failed=1
+    else
+        echo "✅  Lint passed"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Format check
+# ---------------------------------------------------------------------------
+if [ -n "$py_files" ]; then
+    echo "🎨 Running ruff format --check..."
+    if ! output=$($RUFF format --check rag_facts_check/ tests/ scripts/ 2>&1); then
+        echo "$output"
+        echo "❌  Format check failed. Fix with: make format"
+        failed=1
+    else
+        echo "✅  Format check passed"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Exit
+# ---------------------------------------------------------------------------
+if [ $failed -ne 0 ]; then
+    echo ""
+    echo "Commit blocked by pre-commit hook. Fix the issues above and try again."
+    echo "You can bypass with: git commit --no-verify"
+    exit 1
+fi
+
+echo "✅  All pre-commit checks passed"

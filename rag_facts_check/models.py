@@ -1,7 +1,6 @@
 """Data models for the RAG fact-checking system."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -39,9 +38,9 @@ class VerificationResult:
     confidence: int  # 0-100
     evidence: str
     explanation: str
-    document_id: Optional[str] = None
-    chunk_id: Optional[str] = None
-    consistency_score: Optional[float] = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    consistency_score: float | None = None
 
 
 @dataclass
@@ -63,11 +62,11 @@ class CheckReport:
     answer: str
     overall_confidence: float
     overall_verdict: str
-    claims: List[Claim] = field(default_factory=list)
-    results: List[VerificationResult] = field(default_factory=list)
+    claims: list[Claim] = field(default_factory=list)
+    results: list[VerificationResult] = field(default_factory=list)
     summary: str = ""
-    hallucination_flags: List[VerificationResult] = field(default_factory=list)
-    dimensions: Dict[str, float] = field(default_factory=dict)
+    hallucination_flags: list[VerificationResult] = field(default_factory=list)
+    dimensions: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Convert the report to a dictionary for JSON serialization."""
@@ -77,9 +76,7 @@ class CheckReport:
             "overall_verdict": self.overall_verdict,
             "summary": self.summary,
             "dimensions": self.dimensions,
-            "claims": [
-                {"index": c.index, "text": c.text} for c in self.claims
-            ],
+            "claims": [{"index": c.index, "text": c.text} for c in self.claims],
             "results": [
                 {
                     "claim_index": r.claim_index,

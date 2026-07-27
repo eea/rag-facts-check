@@ -42,9 +42,7 @@ Claims:"""
 
 def format_claim_extraction_prompt(text: str) -> str:
     """Build the full claim extraction prompt."""
-    return CLAIM_EXTRACTION_PROMPT.format(
-        system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text
-    )
+    return CLAIM_EXTRACTION_PROMPT.format(system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text)
 
 
 # ---------------------------------------------------------------------------
@@ -142,9 +140,7 @@ Source Documents:
 {documents}"""
 
 
-def format_claim_verification_evidence_first_prompt(
-    claim: str, documents: list[str]
-) -> str:
+def format_claim_verification_evidence_first_prompt(claim: str, documents: list[str]) -> str:
     """Build the evidence-first multi-step verification prompt.
 
     This prompt explicitly asks the model to extract evidence first,
@@ -170,6 +166,7 @@ def format_claim_verification_evidence_first_prompt(
 # Document Formatting
 # ---------------------------------------------------------------------------
 
+
 def format_documents(
     documents: list[str],
     max_chars_per_doc: int = 2000,
@@ -193,7 +190,7 @@ def format_documents(
 
     for i, doc in enumerate(documents):
         if total_chars >= max_total_chars:
-            parts.append(f"\n[Remaining documents truncated to fit context window]")
+            parts.append("\n[Remaining documents truncated to fit context window]")
             break
 
         # Truncate individual document

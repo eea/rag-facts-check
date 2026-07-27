@@ -5,9 +5,7 @@ Covers Claim, VerificationResult, CheckReport, and the to_dict()
 serialization method.
 """
 
-import pytest
-
-from rag_facts_check.models import Claim, VerificationResult, CheckReport
+from rag_facts_check.models import CheckReport, Claim, VerificationResult
 
 
 class TestClaim:
@@ -226,6 +224,7 @@ class TestCheckReport:
     def test_report_to_dict_serializable(self):
         """to_dict() output should be JSON-serializable."""
         import json
+
         report = CheckReport(
             answer="Test.",
             overall_confidence=50.0,
@@ -239,6 +238,7 @@ class TestCheckReport:
     def test_report_to_dict_round_trip(self):
         """to_dict() output should preserve all fields."""
         import json
+
         claims = [Claim(text="Test claim.", index=1)]
         results = [
             VerificationResult(

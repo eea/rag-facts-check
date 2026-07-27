@@ -11,7 +11,6 @@ For better accuracy, replace with an embedding-based retriever.
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
 
 
 @dataclass
@@ -48,7 +47,7 @@ class EvidenceRetriever:
         chunk_size: int = 200,
         top_k: int = 3,
         min_overlap: int = 1,
-        stop_words: Optional[set] = None,
+        stop_words: set | None = None,
     ):
         """Initialize the retriever.
 
@@ -67,21 +66,107 @@ class EvidenceRetriever:
     def _default_stop_words() -> set:
         """Return a basic set of English stop words."""
         return {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
-            "for", "of", "with", "by", "from", "is", "are", "was", "were",
-            "be", "been", "being", "have", "has", "had", "do", "does", "did",
-            "will", "would", "could", "should", "may", "might", "can", "this",
-            "that", "these", "those", "i", "you", "he", "she", "it", "we",
-            "they", "their", "his", "her", "its", "our", "your", "my",
-            "as", "than", "then", "so", "if", "about", "into", "through",
-            "during", "before", "after", "above", "below", "up", "out",
-            "off", "over", "under", "again", "further", "once", "here",
-            "there", "when", "where", "why", "how", "all", "each", "few",
-            "more", "most", "other", "some", "such", "no", "nor", "not",
-            "only", "own", "same", "very", "just", "also", "now", "been",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
+            "their",
+            "his",
+            "her",
+            "its",
+            "our",
+            "your",
+            "my",
+            "as",
+            "than",
+            "then",
+            "so",
+            "if",
+            "about",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "up",
+            "out",
+            "off",
+            "over",
+            "under",
+            "again",
+            "further",
+            "once",
+            "here",
+            "there",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "each",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "nor",
+            "not",
+            "only",
+            "own",
+            "same",
+            "very",
+            "just",
+            "also",
+            "now",
         }
 
-    def chunk_documents(self, documents: List[str]) -> List[DocumentChunk]:
+    def chunk_documents(self, documents: list[str]) -> list[DocumentChunk]:
         """Split documents into chunks of approximately *chunk_size* words.
 
         Args:
@@ -97,7 +182,7 @@ class EvidenceRetriever:
             chunks.extend(doc_chunks)
         return chunks
 
-    def _chunk_text(self, text: str, doc_id: str) -> List[DocumentChunk]:
+    def _chunk_text(self, text: str, doc_id: str) -> list[DocumentChunk]:
         """Split a single document into chunks."""
         # Split into sentences first
         sentences = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -109,11 +194,13 @@ class EvidenceRetriever:
         for sentence in sentences:
             sentence_words = len(sentence.split())
             if current_word_count + sentence_words > self.chunk_size and current_chunk:
-                chunks.append(DocumentChunk(
-                    text=current_chunk.strip(),
-                    doc_id=doc_id,
-                    chunk_id=chunk_id,
-                ))
+                chunks.append(
+                    DocumentChunk(
+                        text=current_chunk.strip(),
+                        doc_id=doc_id,
+                        chunk_id=chunk_id,
+                    )
+                )
                 chunk_id += 1
                 current_chunk = ""
                 current_word_count = 0
@@ -122,17 +209,17 @@ class EvidenceRetriever:
             current_word_count += sentence_words
 
         if current_chunk.strip():
-            chunks.append(DocumentChunk(
-                text=current_chunk.strip(),
-                doc_id=doc_id,
-                chunk_id=chunk_id,
-            ))
+            chunks.append(
+                DocumentChunk(
+                    text=current_chunk.strip(),
+                    doc_id=doc_id,
+                    chunk_id=chunk_id,
+                )
+            )
 
         return chunks
 
-    def retrieve(
-        self, claim: str, chunks: List[DocumentChunk]
-    ) -> List[DocumentChunk]:
+    def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
         """Retrieve the most relevant chunks for a claim.
 
         Uses keyword overlap (Jaccard-like similarity on non-stop-words).

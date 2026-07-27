@@ -14,10 +14,10 @@ Key features:
 - Span-level verification (document_id and chunk_id in results)
 """
 
-from .models import Claim, VerificationResult, CheckReport
-from .llm import LLM, HuggingFaceLLM, APILLM, ChatLLM
-from .retriever import EvidenceRetriever, DocumentChunk
 from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
+from .llm import APILLM, LLM, ChatLLM, HuggingFaceLLM
+from .models import CheckReport, Claim, VerificationResult
+from .retriever import DocumentChunk, EvidenceRetriever
 from .testing import MockLLM
 
 __all__ = [

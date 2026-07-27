@@ -5,11 +5,9 @@ Tests the full pipeline (claim extraction → evidence retrieval →
 verification → aggregation) using the mock datasets and MockLLM.
 """
 
-import json
-
 import pytest
 
-from rag_facts_check import MockLLM, RAGFactsChecker, EvidenceRetriever
+from rag_facts_check import EvidenceRetriever, RAGFactsChecker
 from rag_facts_check.models import CheckReport
 
 
@@ -71,9 +69,7 @@ class TestEndToEnd:
         )
         # 5.7°C contradicts 2-4°C
         assert len(report.hallucination_flags) > 0
-        assert report.overall_verdict in [
-            "largely_unsupported", "partially_supported"
-        ]
+        assert report.overall_verdict in ["largely_unsupported", "partially_supported"]
 
     def test_renewable_energy_no_hallucination(self, mock_llm, renewable_energy_dataset):
         """The renewable energy answer should have minimal hallucinations."""
@@ -191,7 +187,8 @@ class TestEndToEnd:
 
             assert report.dimensions["groundedness"] == round(supported / total * 100, 1)
             assert report.dimensions["contradiction_rate"] == round(contradicted / total * 100, 1)
-            assert report.dimensions["hallucination_rate"] == round((contradicted + not_enough) / total * 100, 1)
+            expected_hallucination = round((contradicted + not_enough) / total * 100, 1)
+            assert report.dimensions["hallucination_rate"] == expected_hallucination
 
     def test_pipeline_summary_not_empty(self, mock_llm, climate_change_dataset):
         """Test that the summary is not empty."""
@@ -209,6 +206,7 @@ class TestMockLLM:
     def test_mock_llm_claim_extraction(self, mock_llm):
         """MockLLM should return CLAIM format for extraction prompts."""
         from rag_facts_check.prompts import format_claim_extraction_prompt
+
         prompt = format_claim_extraction_prompt("Paris is the capital of France.")
         response = mock_llm.generate(prompt)
         assert "CLAIM" in response
@@ -216,6 +214,7 @@ class TestMockLLM:
     def test_mock_llm_verification_supported(self, mock_llm):
         """MockLLM should return SUPPORTED for matching claims."""
         from rag_facts_check.prompts import format_claim_verification_evidence_first_prompt
+
         docs = ["Paris is the capital of France."]
         prompt = format_claim_verification_evidence_first_prompt(
             "Paris is the capital of France.", docs
@@ -226,6 +225,7 @@ class TestMockLLM:
     def test_mock_llm_verification_contradicted(self, mock_llm):
         """MockLLM should return CONTRADICTED for contradicting claims."""
         from rag_facts_check.prompts import format_claim_verification_evidence_first_prompt
+
         docs = ["The Louvre is located in Paris, France."]
         prompt = format_claim_verification_evidence_first_prompt(
             "The Louvre is located in Berlin.", docs
@@ -244,6 +244,7 @@ class TestMockLLM:
     def test_mock_llm_climate_hallucination(self, mock_llm):
         """MockLLM should detect climate change hallucinations."""
         from rag_facts_check.prompts import format_claim_verification_evidence_first_prompt
+
         docs = ["Climate models estimate a 2-4°C rise by the end of the century."]
         prompt = format_claim_verification_evidence_first_prompt(
             "Temperatures will rise by 5.7°C by 2100.", docs
@@ -254,7 +255,10 @@ class TestMockLLM:
     def test_mock_llm_renewable_statistic(self, mock_llm):
         """MockLLM should verify renewable energy statistics."""
         from rag_facts_check.prompts import format_claim_verification_evidence_first_prompt
-        docs = ["In 2023, renewable energy sources accounted for 30% of global electricity generation."]
+
+        docs = [
+            "In 2023, renewable energy sources accounted for 30% of global electricity generation."
+        ]
         prompt = format_claim_verification_evidence_first_prompt(
             "Renewables accounted for 30% of electricity in 2023.", docs
         )

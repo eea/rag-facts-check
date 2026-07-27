@@ -15,7 +15,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rag_facts_check import RAGFactsChecker, APILLM
+from rag_facts_check import APILLM, RAGFactsChecker
 
 
 def load_env(env_path: str = ".env") -> dict:
@@ -37,7 +37,8 @@ def load_env(env_path: str = ".env") -> dict:
 
 def check_dataset(dataset_path: str, verbose: bool = False):
     """Check a dataset using real LLM from .env."""
-    data = json.load(open(dataset_path))
+    with open(dataset_path) as f:
+        data = json.load(f)
     env = load_env()
     if not env:
         print("ERROR: No .env file found. Copy .env.example to .env and configure.")
@@ -68,19 +69,20 @@ def print_report(name: str, report, verbose: bool = False):
     print(f"Claims:     {len(d['claims'])} total, {len(d['hallucination_flags'])} flagged")
     print(f"Dimensions: {d['dimensions']}")
 
-    print(f"\nPer-claim results:")
+    print("\nPer-claim results:")
     for r in d["results"]:
         claim_preview = r["claim"][:75] + "..." if len(r["claim"]) > 75 else r["claim"]
-        print(f"  [{r['claim_index']}] {r['verdict'].upper():15} conf={r['confidence']:3}% | {claim_preview}")
+        verdict = r["verdict"].upper()
+        print(f"  [{r['claim_index']}] {verdict:15} conf={r['confidence']:3}% | {claim_preview}")
 
     if d["hallucination_flags"]:
-        print(f"\nHallucination flags:")
+        print("\nHallucination flags:")
         for f in d["hallucination_flags"]:
             claim_preview = f["claim"][:65] + "..." if len(f["claim"]) > 65 else f["claim"]
             print(f"  ⚠️  [{f['claim_index']}] {claim_preview}")
 
     if verbose:
-        print(f"\nDetailed evidence:")
+        print("\nDetailed evidence:")
         for r in d["results"]:
             print(f"\n  Claim {r['claim_index']}: {r['claim'][:80]}")
             print(f"  Verdict:    {r['verdict']}")
@@ -105,6 +107,7 @@ def main():
             print(f"ERROR checking {dataset_path}: {e}")
             if args.verbose:
                 import traceback
+
                 traceback.print_exc()
             sys.exit(1)
 

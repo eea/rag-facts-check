@@ -4,9 +4,7 @@ Tests for the EvidenceRetriever and DocumentChunk in rag_facts_check.retriever.
 Covers document chunking, lexical retrieval, tokenization, and edge cases.
 """
 
-import pytest
-
-from rag_facts_check.retriever import EvidenceRetriever, DocumentChunk
+from rag_facts_check.retriever import DocumentChunk, EvidenceRetriever
 
 
 class TestDocumentChunk:
@@ -36,9 +34,7 @@ class TestEvidenceRetriever:
         assert retriever.stop_words is not None
 
     def test_custom_init(self):
-        retriever = EvidenceRetriever(
-            chunk_size=100, top_k=5, min_overlap=2
-        )
+        retriever = EvidenceRetriever(chunk_size=100, top_k=5, min_overlap=2)
         assert retriever.chunk_size == 100
         assert retriever.top_k == 5
         assert retriever.min_overlap == 2

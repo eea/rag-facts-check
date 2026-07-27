@@ -6,7 +6,6 @@ allowing the full fact-checking pipeline to be tested without a real LLM.
 """
 
 import re
-from typing import List
 
 from ..llm import LLM
 
@@ -42,7 +41,9 @@ class MockLLM(LLM):
 
         if "extract all factual claims" in lower or "extract claims from the following" in lower:
             return self._mock_claims_response(prompt)
-        elif "verify whether a claim is supported" in lower or "verify the following claim" in lower:
+        elif (
+            "verify whether a claim is supported" in lower or "verify the following claim" in lower
+        ):
             return self._mock_verification_response(prompt)
         else:
             return "Mock response for: " + prompt[:100]
@@ -64,10 +65,10 @@ class MockLLM(LLM):
             text = "Paris is the capital of France. The Eiffel Tower was built in 1889."
 
         # Simple sentence-based claim extraction for mock
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = re.split(r"(?<=[.!?])\s+", text)
         claims = []
         for i, s in enumerate(sentences, 1):
-            s = s.strip().rstrip('.')
+            s = s.strip().rstrip(".")
             if s and len(s) > 5:
                 claims.append(f"CLAIM {i}: {s}.")
         if not claims:
@@ -77,13 +78,12 @@ class MockLLM(LLM):
     def _mock_verification_response(self, prompt: str) -> str:
         """Mock verification: check if claim is supported/contradicted by docs."""
         # Extract claim from prompt
-        claim_match = re.search(r'Claim:\s*\n(.+?)\n\nSource Documents:', prompt, re.DOTALL)
+        claim_match = re.search(r"Claim:\s*\n(.+?)\n\nSource Documents:", prompt, re.DOTALL)
         claim = claim_match.group(1).strip() if claim_match else "unknown claim"
 
         # Extract documents from prompt (handles both standard and evidence-first formats)
         docs_match = re.search(
-            r'Source Documents:\s*\n(.+?)(?:\n\nInstructions:|\n\nStep 1:|\Z)',
-            prompt, re.DOTALL
+            r"Source Documents:\s*\n(.+?)(?:\n\nInstructions:|\n\nStep 1:|\Z)", prompt, re.DOTALL
         )
         docs_text = docs_match.group(1).strip() if docs_match else ""
 
@@ -160,8 +160,8 @@ EVIDENCE: N/A
 EXPLANATION: The source documents do not mention any Nutrient Accord. This agreement appears to be fabricated."""
 
         # General number matching for environmental claims
-        claim_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_claim))
-        doc_numbers = set(re.findall(r'\d+(?:\.\d+)?%', lower_docs))
+        claim_numbers = set(re.findall(r"\d+(?:\.\d+)?%", lower_claim))
+        doc_numbers = set(re.findall(r"\d+(?:\.\d+)?%", lower_docs))
         if claim_numbers and claim_numbers & doc_numbers:
             matched = claim_numbers & doc_numbers
             return f"""VERDICT: SUPPORTED
@@ -171,23 +171,119 @@ EXPLANATION: The claim contains the statistic {matched.pop()}, which appears in 
 
         # General keyword overlap: if claim shares significant keywords with docs,
         # treat as supported (covers renewable energy capacity factors, BESS, etc.)
-        stop = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
-                "for", "of", "with", "by", "from", "is", "are", "was", "were",
-                "be", "been", "being", "have", "has", "had", "do", "does", "did",
-                "will", "would", "could", "should", "may", "might", "can", "this",
-                "that", "these", "those", "as", "than", "then", "so", "if",
-                "about", "into", "through", "during", "before", "after",
-                "above", "below", "up", "out", "off", "over", "under",
-                "again", "further", "once", "here", "there", "when", "where",
-                "why", "how", "all", "each", "few", "more", "most", "other",
-                "some", "such", "no", "nor", "not", "only", "own", "same",
-                "very", "just", "also", "now", "also", "according", "data",
-                "climate", "models", "current", "recent", "projections",
-                "future", "century", "scenario", "scenarios", "emissions",
-                "temperature", "warming", "global", "document", "documents",
-                "provided", "note", "specific", "expected", "reach",
-                "range", "estimated", "estimate", "estimate", "provide",
-                "under", "regarding", "according", "recent", "data"}
+        stop = {
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "from",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "this",
+            "that",
+            "these",
+            "those",
+            "as",
+            "than",
+            "then",
+            "so",
+            "if",
+            "about",
+            "into",
+            "through",
+            "during",
+            "before",
+            "after",
+            "above",
+            "below",
+            "up",
+            "out",
+            "off",
+            "over",
+            "under",
+            "again",
+            "further",
+            "once",
+            "here",
+            "there",
+            "when",
+            "where",
+            "why",
+            "how",
+            "all",
+            "each",
+            "few",
+            "more",
+            "most",
+            "other",
+            "some",
+            "such",
+            "no",
+            "nor",
+            "not",
+            "only",
+            "own",
+            "same",
+            "very",
+            "just",
+            "also",
+            "now",
+            "according",
+            "data",
+            "climate",
+            "models",
+            "current",
+            "recent",
+            "projections",
+            "future",
+            "century",
+            "scenario",
+            "scenarios",
+            "emissions",
+            "temperature",
+            "warming",
+            "global",
+            "document",
+            "documents",
+            "provided",
+            "note",
+            "specific",
+            "expected",
+            "reach",
+            "range",
+            "estimated",
+            "estimate",
+            "provide",
+            "regarding",
+        }
         claim_words = {w for w in lower_claim.split() if w not in stop and len(w) > 4}
         doc_words = {w for w in lower_docs.split() if w not in stop and len(w) > 4}
         if claim_words and doc_words:
@@ -196,7 +292,7 @@ EXPLANATION: The claim contains the statistic {matched.pop()}, which appears in 
                 return f"""VERDICT: SUPPORTED
 CONFIDENCE: 75
 EVIDENCE: "Claim shares key terms with source documents."
-EXPLANATION: The claim contains keywords ({', '.join(sorted(overlap)[:3])}) that appear in the source documents, supporting the claim."""
+EXPLANATION: The claim contains keywords ({", ".join(sorted(overlap)[:3])}) that appear in the source documents, supporting the claim."""
 
         # Default: not enough info
         return """VERDICT: NOT ENOUGH INFO

@@ -10,9 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from rag_facts_check import MockLLM, RAGFactsChecker, EvidenceRetriever
-from rag_facts_check.models import Claim, VerificationResult, CheckReport
-
+from rag_facts_check import EvidenceRetriever, MockLLM, RAGFactsChecker
+from rag_facts_check.models import Claim, VerificationResult
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +56,7 @@ SAMPLE_DOCS_RENEWABLE = [
 
 # ─── LLM Fixtures ────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_llm():
     """Fresh MockLLM instance for each test."""
@@ -72,6 +72,7 @@ def mock_llm_with_calls():
 
 
 # ─── Checker Fixtures ────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def checker(mock_llm):
@@ -105,6 +106,7 @@ def retriever():
 
 # ─── Dataset Fixtures ────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def climate_change_dataset():
     """Load the climate change hallucinated dataset."""
@@ -122,6 +124,7 @@ def renewable_energy_dataset():
 
 
 # ─── Model Fixtures ──────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def sample_claim():

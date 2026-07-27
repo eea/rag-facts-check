@@ -6,23 +6,10 @@ Covers ClaimExtractor, ClaimVerifier, RAGFactsChecker, and aggregation logic.
 
 import pytest
 
-from rag_facts_check import MockLLM, RAGFactsChecker, EvidenceRetriever
-from rag_facts_check.checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker as Checker
-from pathlib import Path
-import json
-
-from rag_facts_check.models import Claim, VerificationResult, CheckReport
+from rag_facts_check import EvidenceRetriever, RAGFactsChecker
+from rag_facts_check.checker import ClaimExtractor, ClaimVerifier
+from rag_facts_check.models import CheckReport, Claim, VerificationResult
 from rag_facts_check.retriever import DocumentChunk
-from rag_facts_check.prompts import (
-    format_claim_extraction_prompt,
-    format_claim_verification_prompt,
-    format_claim_verification_evidence_first_prompt,
-    format_documents,
-)
-
-# ─── Sample data (mirrors conftest.py constants) ─────────────────────────────
-
-MOCK_DATASETS_DIR = Path(__file__).resolve().parents[1] / "mock_datasets"
 
 SAMPLE_ANSWER_BERLIN = (
     "Paris is the capital of France. "
@@ -75,7 +62,9 @@ class TestClaimExtractor:
 
     def test_parse_claims_standard_format(self, mock_llm):
         extractor = ClaimExtractor(mock_llm)
-        response = "CLAIM 1: Paris is the capital of France.\nCLAIM 2: The Eiffel Tower was built in 1889."
+        response = (
+            "CLAIM 1: Paris is the capital of France.\nCLAIM 2: The Eiffel Tower was built in 1889."
+        )
         claims = extractor._parse_claims(response)
         assert len(claims) == 2
         assert claims[0].text == "Paris is the capital of France."
@@ -149,9 +138,7 @@ class TestClaimVerifier:
         verifier = ClaimVerifier(mock_llm)
         claim = Claim(text="Paris is the capital of France.", index=1)
         docs = ["Paris is the capital of France."]
-        chunks = [
-            DocumentChunk(text="Paris is the capital of France.", doc_id="doc_1", chunk_id=0)
-        ]
+        chunks = [DocumentChunk(text="Paris is the capital of France.", doc_id="doc_1", chunk_id=0)]
         result = verifier.verify(claim, docs, chunks=chunks)
         assert isinstance(result, VerificationResult)
 
@@ -193,7 +180,9 @@ class TestClaimVerifier:
         """Test verification of a renewable energy statistic."""
         verifier = ClaimVerifier(mock_llm)
         claim = Claim(text="Renewables accounted for 30% of electricity in 2023.", index=1)
-        docs = ["In 2023, renewable energy sources accounted for 30% of global electricity generation."]
+        docs = [
+            "In 2023, renewable energy sources accounted for 30% of global electricity generation."
+        ]
         result = verifier.verify(claim, docs)
         assert result.verdict == "supported"
 
@@ -253,16 +242,34 @@ EXPLANATION: test"""
         verifier = ClaimVerifier(mock_llm)
         claim = Claim(text="Test.", index=1)
         results = [
-            VerificationResult(claim="Test.", claim_index=1, verdict="supported",
-                               confidence=90, evidence="E1", explanation="E1"),
-            VerificationResult(claim="Test.", claim_index=1, verdict="supported",
-                               confidence=85, evidence="E2", explanation="E2"),
-            VerificationResult(claim="Test.", claim_index=1, verdict="contradicted",
-                               confidence=70, evidence="E3", explanation="E3"),
+            VerificationResult(
+                claim="Test.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence="E1",
+                explanation="E1",
+            ),
+            VerificationResult(
+                claim="Test.",
+                claim_index=1,
+                verdict="supported",
+                confidence=85,
+                evidence="E2",
+                explanation="E2",
+            ),
+            VerificationResult(
+                claim="Test.",
+                claim_index=1,
+                verdict="contradicted",
+                confidence=70,
+                evidence="E3",
+                explanation="E3",
+            ),
         ]
         agg = verifier._aggregate_consistency(claim, None, results)
         assert agg.verdict == "supported"  # majority
-        assert agg.consistency_score == pytest.approx(2/3)
+        assert agg.consistency_score == pytest.approx(2 / 3)
 
 
 class TestRAGFactsChecker:
@@ -276,8 +283,11 @@ class TestRAGFactsChecker:
         assert isinstance(report, CheckReport)
         assert report.overall_confidence > 0
         assert report.overall_verdict in [
-            "fully_supported", "mostly_supported", "partially_supported",
-            "largely_unsupported", "no_claims"
+            "fully_supported",
+            "mostly_supported",
+            "partially_supported",
+            "largely_unsupported",
+            "no_claims",
         ]
 
     def test_check_with_hallucination(self, checker):
@@ -368,9 +378,7 @@ class TestRAGFactsChecker:
         assert isinstance(report, CheckReport)
         # The answer contains 5.7°C which contradicts 2-4°C in docs
         assert len(report.hallucination_flags) > 0
-        assert report.overall_verdict in [
-            "largely_unsupported", "partially_supported"
-        ]
+        assert report.overall_verdict in ["largely_unsupported", "partially_supported"]
 
     def test_check_renewable_energy_supported(self, checker, renewable_energy_dataset):
         """Test with the renewable energy supported dataset."""
@@ -381,7 +389,9 @@ class TestRAGFactsChecker:
         assert isinstance(report, CheckReport)
         # Should have mostly supported claims
         assert report.overall_verdict in [
-            "fully_supported", "mostly_supported", "partially_supported"
+            "fully_supported",
+            "mostly_supported",
+            "partially_supported",
         ]
 
     def test_aggregate_dimensions(self, checker):
@@ -446,8 +456,3 @@ class TestRAGFactsChecker:
         )
         if report.claims and report.results:
             assert len(report.results) == len(report.claims)
-
-
-# ─── Sample data references (defined in conftest but accessible here) ─────────
-
-

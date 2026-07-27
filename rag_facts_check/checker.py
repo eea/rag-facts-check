@@ -12,17 +12,15 @@ Enhancements over the base implementation:
 
 import re
 from collections import Counter
-from typing import List, Optional
 
-from .models import Claim, VerificationResult, CheckReport
 from .llm import LLM
+from .models import CheckReport, Claim, VerificationResult
 from .prompts import (
     format_claim_extraction_prompt,
-    format_claim_verification_prompt,
     format_claim_verification_evidence_first_prompt,
-    format_documents,
+    format_claim_verification_prompt,
 )
-from .retriever import EvidenceRetriever, DocumentChunk
+from .retriever import DocumentChunk, EvidenceRetriever
 
 
 class ClaimExtractor:
@@ -36,7 +34,7 @@ class ClaimExtractor:
         self.llm = llm
         self.max_new_tokens = max_new_tokens
 
-    def extract(self, answer: str) -> List[Claim]:
+    def extract(self, answer: str) -> list[Claim]:
         """Extract factual claims from *answer*.
 
         Args:
@@ -57,7 +55,7 @@ class ClaimExtractor:
 
         return self._parse_claims(response)
 
-    def _parse_claims(self, response: str) -> List[Claim]:
+    def _parse_claims(self, response: str) -> list[Claim]:
         """Parse the LLM response into a list of claims.
 
         Expected format: "CLAIM N: <text>" per line.
@@ -121,8 +119,8 @@ class ClaimVerifier:
     def verify(
         self,
         claim: Claim,
-        documents: List[str],
-        chunks: Optional[List[DocumentChunk]] = None,
+        documents: list[str],
+        chunks: list[DocumentChunk] | None = None,
     ) -> VerificationResult:
         """Verify a single claim against the source documents.
 
@@ -137,10 +135,7 @@ class ClaimVerifier:
             and explanation.
         """
         # Determine which documents to use
-        if chunks is not None:
-            docs_to_verify = [c.text for c in chunks]
-        else:
-            docs_to_verify = documents
+        docs_to_verify = [c.text for c in chunks] if chunks is not None else documents
 
         # Self-consistency: run multiple times with different temperatures
         if self.num_consistency_runs > 1:
@@ -157,14 +152,12 @@ class ClaimVerifier:
     def _single_verify(
         self,
         claim: Claim,
-        documents: List[str],
+        documents: list[str],
         temperature: float = 0.1,
     ) -> VerificationResult:
         """Single verification pass."""
         if self.evidence_first:
-            prompt = format_claim_verification_evidence_first_prompt(
-                claim.text, documents
-            )
+            prompt = format_claim_verification_evidence_first_prompt(claim.text, documents)
         else:
             prompt = format_claim_verification_prompt(claim.text, documents)
 
@@ -179,8 +172,8 @@ class ClaimVerifier:
     def _aggregate_consistency(
         self,
         claim: Claim,
-        chunks: Optional[List[DocumentChunk]],
-        results: List[VerificationResult],
+        chunks: list[DocumentChunk] | None,
+        results: list[VerificationResult],
     ) -> VerificationResult:
         """Aggregate multiple verification results using majority vote.
 
@@ -196,17 +189,17 @@ class ClaimVerifier:
         avg_confidence = int(sum(r.confidence for r in results) / len(results))
 
         # Use evidence from the first result with the majority verdict
-        majority_result = next(
-            (r for r in results if r.verdict == majority_verdict), results[0]
-        )
+        majority_result = next((r for r in results if r.verdict == majority_verdict), results[0])
 
         # Extract document_id and chunk_id from evidence if available
         doc_id = None
         chunk_id = None
         if chunks and majority_result.evidence and majority_result.evidence != "N/A":
             for chunk in chunks:
-                if majority_result.evidence.strip('"').strip() in chunk.text or \
-                   chunk.text in majority_result.evidence:
+                if (
+                    majority_result.evidence.strip('"').strip() in chunk.text
+                    or chunk.text in majority_result.evidence
+                ):
                     doc_id = chunk.doc_id
                     chunk_id = str(chunk.chunk_id)
                     break
@@ -225,9 +218,7 @@ class ClaimVerifier:
             consistency_score=consistency_score,
         )
 
-    def _parse_result(
-        self, claim: Claim, response: str
-    ) -> VerificationResult:
+    def _parse_result(self, claim: Claim, response: str) -> VerificationResult:
         """Parse the LLM verification response into a structured result."""
         verdict = "not_enough_info"
         confidence = 50
@@ -235,9 +226,7 @@ class ClaimVerifier:
         explanation = ""
 
         # Parse VERDICT
-        verdict_match = re.search(
-            r"VERDICT:\s*(.+?)(?:\n|$)", response, re.IGNORECASE
-        )
+        verdict_match = re.search(r"VERDICT:\s*(.+?)(?:\n|$)", response, re.IGNORECASE)
         if verdict_match:
             raw_verdict = verdict_match.group(1).strip().upper()
             if "SUPPORTED" in raw_verdict and "NOT" not in raw_verdict:
@@ -250,9 +239,7 @@ class ClaimVerifier:
                 verdict = "supported"
 
         # Parse CONFIDENCE
-        conf_match = re.search(
-            r"CONFIDENCE:\s*(\d+)", response, re.IGNORECASE
-        )
+        conf_match = re.search(r"CONFIDENCE:\s*(\d+)", response, re.IGNORECASE)
         if conf_match:
             confidence = min(100, max(0, int(conf_match.group(1))))
 
@@ -317,14 +304,14 @@ class RAGFactsChecker:
     def __init__(
         self,
         llm: LLM,
-        max_claims: Optional[int] = None,
+        max_claims: int | None = None,
         max_new_tokens: int = 512,
         max_docs_chars: int = 8000,
         max_chars_per_doc: int = 2000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
         use_evidence_retrieval: bool = True,
-        retriever: Optional[EvidenceRetriever] = None,
+        retriever: EvidenceRetriever | None = None,
     ):
         """Initialize the checker.
 
@@ -363,7 +350,7 @@ class RAGFactsChecker:
             evidence_first=evidence_first,
         )
 
-    def check(self, answer: str, documents: List[str]) -> CheckReport:
+    def check(self, answer: str, documents: list[str]) -> CheckReport:
         """Run the full fact-checking pipeline on a RAG answer.
 
         Args:
@@ -420,8 +407,8 @@ class RAGFactsChecker:
     def _aggregate(
         self,
         answer: str,
-        claims: List[Claim],
-        results: List[VerificationResult],
+        claims: list[Claim],
+        results: list[VerificationResult],
     ) -> CheckReport:
         """Aggregate per-claim results into a comprehensive report."""
         total = len(results)
@@ -430,14 +417,8 @@ class RAGFactsChecker:
         not_enough = sum(1 for r in results if r.verdict == "not_enough_info")
 
         # Overall confidence: weighted average of per-claim confidence
-        weighted_sum = sum(
-            r.confidence * self.VERDICT_WEIGHTS.get(r.verdict, 0.5)
-            for r in results
-        )
-        max_possible = sum(
-            100 * self.VERDICT_WEIGHTS.get(r.verdict, 0.5)
-            for r in results
-        )
+        weighted_sum = sum(r.confidence * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
+        max_possible = sum(100 * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
         overall_confidence = (weighted_sum / max_possible * 100) if max_possible > 0 else 0.0
 
         # Overall verdict
@@ -464,9 +445,9 @@ class RAGFactsChecker:
         dimensions = {
             "groundedness": round(supported / total * 100, 1) if total > 0 else 0.0,
             "contradiction_rate": round(contradicted / total * 100, 1) if total > 0 else 0.0,
-            "hallucination_rate": round(
-                (contradicted + not_enough) / total * 100, 1
-            ) if total > 0 else 0.0,
+            "hallucination_rate": round((contradicted + not_enough) / total * 100, 1)
+            if total > 0
+            else 0.0,
             "completeness": round(supported / total * 100, 1) if total > 0 else 0.0,
         }
 
@@ -513,9 +494,7 @@ class RAGFactsChecker:
         ]
 
         if contradicted > 0:
-            parts.append(
-                f"⚠️  {contradicted} claim(s) are contradicted by the source documents."
-            )
+            parts.append(f"⚠️  {contradicted} claim(s) are contradicted by the source documents.")
         if not_enough > 0:
             parts.append(
                 f"ℹ️  {not_enough} claim(s) could not be verified — "
