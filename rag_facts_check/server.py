@@ -293,8 +293,16 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         # Map confidence (0-100) to score (0-1)
         score = result.confidence / 100.0
 
+        # Extract the claim text from the answer using the span
+        claim_string = (
+            answer_text[start_offset:end_offset]
+            if claim.span
+            else claim.text
+        )
+
         claims.append(
             {
+                "claimString": claim_string,
                 "startOffset": start_offset,
                 "endOffset": end_offset,
                 "segmentIds": segment_ids,
