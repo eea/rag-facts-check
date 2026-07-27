@@ -16,11 +16,12 @@ Key features:
 
 from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
 from .llm import APILLM, LLM, AsyncAPILLM, ChatLLM, HuggingFaceLLM
-from .models import CheckReport, Claim, VerificationResult
+from .models import CheckReport, Claim, Span, VerificationResult
 from .retriever import DocumentChunk, EvidenceRetriever
 
 __all__ = [
     "Claim",
+    "Span",
     "VerificationResult",
     "CheckReport",
     "LLM",
