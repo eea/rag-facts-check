@@ -7,8 +7,20 @@ schemas. Each agent phase gets its own input/output schema pair.
 from __future__ import annotations
 
 from atomic_agents import AgentConfig, AtomicAgent, BaseIOSchema
+from atomic_agents.context.system_prompt_generator import BaseSystemPromptGenerator
 from instructor import Mode
 from pydantic import Field
+
+
+class _StaticSystemPromptGenerator(BaseSystemPromptGenerator):
+    """System prompt generator that returns a fixed prompt string."""
+
+    def __init__(self, prompt: str):
+        super().__init__()
+        self._prompt = prompt
+
+    def generate_prompt(self) -> str:
+        return self._prompt
 
 # ---------------------------------------------------------------------------
 # Claim Extraction schemas
@@ -131,7 +143,7 @@ def make_claim_extraction_agent(
                 "temperature": temperature,
                 "max_retries": max_retries,
             },
-            system_prompt_generator=lambda **_: system_prompt,
+            system_prompt_generator=_StaticSystemPromptGenerator(system_prompt),
             max_context_tokens=None,
         ),
     )
@@ -165,7 +177,7 @@ def make_verification_agent(
                 "temperature": temperature,
                 "max_retries": max_retries,
             },
-            system_prompt_generator=lambda **_: system_prompt,
+            system_prompt_generator=_StaticSystemPromptGenerator(system_prompt),
             max_context_tokens=None,
         ),
     )
