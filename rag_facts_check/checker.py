@@ -386,7 +386,7 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=result.confidence,
+            confidence=0,
             evidence=result.evidence or "N/A",
             explanation=result.explanation or "",
             document_index=doc_index,
@@ -401,15 +401,13 @@ class ClaimVerifier:
         """Aggregate multiple verification results using majority vote.
 
         - Verdict: majority vote
-        - Confidence: average of per-run confidences
+        - Confidence: consistency score as percentage (how many runs agreed)
         - Evidence: from the result with the majority verdict
         - Consistency score: fraction of runs that agree with the majority
         """
         verdicts = [r.verdict for r in results]
         verdict_counts = Counter(verdicts)
         majority_verdict, majority_count = verdict_counts.most_common(1)[0]
-
-        avg_confidence = int(sum(r.confidence for r in results) / len(results))
 
         # Use evidence from the first result with the majority verdict
         majority_result = next((r for r in results if r.verdict == majority_verdict), results[0])
@@ -433,7 +431,7 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=majority_verdict,
-            confidence=avg_confidence,
+            confidence=int(consistency_score * 100),
             evidence=majority_result.evidence,
             explanation=majority_result.explanation,
             document_id=doc_id,
@@ -479,7 +477,6 @@ class ClaimVerifier:
         else:
             verdict = "not_enough_info"
 
-        confidence = min(100, max(0, int(data.get("confidence", 50))))
         evidence = data.get("evidence", "N/A") or "N/A"
         explanation = data.get("explanation", "") or ""
 
@@ -491,7 +488,7 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=confidence,
+            confidence=0,
             evidence=evidence,
             explanation=explanation,
             document_index=doc_index,
@@ -500,7 +497,6 @@ class ClaimVerifier:
     def _parse_text_result(self, claim: Claim, response: str) -> VerificationResult:
         """Parse legacy VERDICT:/CONFIDENCE: text format."""
         verdict = "not_enough_info"
-        confidence = 50
         evidence = "N/A"
         explanation = ""
 
@@ -515,10 +511,6 @@ class ClaimVerifier:
                 verdict = "not_enough_info"
             elif "SUPPORTED" in raw_verdict:
                 verdict = "supported"
-
-        conf_match = re.search(r"CONFIDENCE:\s*(\d+)", response, re.IGNORECASE)
-        if conf_match:
-            confidence = min(100, max(0, int(conf_match.group(1))))
 
         evidence_match = re.search(
             r"EVIDENCE:\s*(.+?)(?:\n\n|\nEXPLANATION|\nVERDICT|\Z)",
@@ -540,7 +532,7 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=confidence,
+            confidence=0,
             evidence=evidence,
             explanation=explanation,
         )
@@ -820,17 +812,14 @@ class RAGFactsChecker:
         if total == 0:
             return 0.0
 
-        # 1. Groundedness base (0-10)
+        # 1. Groundedness base (0-10) — verdict-based, no LLM confidence
         verdict_weights = {
             "supported": 1.0,
             "not_enough_info": self._SCORE_NEI_WEIGHT,
             "contradicted": 0.0,
         }
-        weighted_sum = sum(
-            r.confidence * verdict_weights.get(r.verdict, 0.5) for r in results
-        )
-        max_possible = sum(r.confidence for r in results)
-        groundedness = (weighted_sum / max_possible * 10) if max_possible > 0 else 0.0
+        weighted_sum = sum(verdict_weights.get(r.verdict, 0.5) for r in results)
+        groundedness = weighted_sum / total * 10
 
         # 2. Citation penalty (1.0 = no penalty, 0.7 = max penalty)
         cited = sum(1 for r in results if r.evidence_span is not None)
@@ -861,10 +850,8 @@ class RAGFactsChecker:
         contradicted = sum(1 for r in results if r.verdict == "contradicted")
         not_enough = sum(1 for r in results if r.verdict == "not_enough_info")
 
-        # Overall confidence: weighted average of per-claim confidence
-        weighted_sum = sum(r.confidence * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
-        max_possible = sum(100 * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
-        overall_confidence = (weighted_sum / max_possible * 100) if max_possible > 0 else 0.0
+        # Overall confidence: percentage of claims that are supported
+        overall_confidence = supported / total * 100 if total > 0 else 0.0
 
         # Overall verdict
         support_ratio = supported / total if total > 0 else 0

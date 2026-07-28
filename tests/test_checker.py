@@ -132,7 +132,6 @@ class TestClaimVerifier:
         docs = ["The Louvre is located in Paris, France."]
         result = await verifier.verify(claim, docs)
         assert result.verdict == "contradicted"
-        assert result.confidence > 0
 
     async def test_verify_with_chunks(self, mock_llm):
         verifier = ClaimVerifier(mock_llm)
@@ -195,7 +194,7 @@ EVIDENCE: "Paris is the capital of France."
 EXPLANATION: Document states this."""
         result = verifier._parse_result(claim, response)
         assert result.verdict == "supported"
-        assert result.confidence == 95
+        assert result.confidence == 0  # confidence no longer parsed from LLM
         assert "Paris" in result.evidence
 
     async def test_parse_result_contradicted(self, mock_llm):
@@ -207,7 +206,7 @@ EVIDENCE: "Louvre is in Paris."
 EXPLANATION: Claim says Berlin."""
         result = verifier._parse_result(claim, response)
         assert result.verdict == "contradicted"
-        assert result.confidence == 85
+        assert result.confidence == 0  # confidence no longer parsed from LLM
 
     async def test_parse_result_not_enough_info(self, mock_llm):
         verifier = ClaimVerifier(mock_llm)
@@ -242,18 +241,8 @@ EXPLANATION: No info."""
         response = "VERDICT: SUPPORTED"
         result = verifier._parse_result(claim, response)
         assert result.verdict == "supported"
-        assert result.confidence == 50  # default
+        assert result.confidence == 0  # no longer parsed from LLM
         assert result.evidence == "N/A"  # default
-
-    async def test_parse_result_confidence_clamped(self, mock_llm):
-        verifier = ClaimVerifier(mock_llm)
-        claim = Claim(text="Test.", index=1)
-        response = """VERDICT: SUPPORTED
-CONFIDENCE: 150
-EVIDENCE: test
-EXPLANATION: test"""
-        result = verifier._parse_result(claim, response)
-        assert result.confidence == 100  # clamped
 
     async def test_aggregate_consistency(self, mock_llm):
         verifier = ClaimVerifier(mock_llm)

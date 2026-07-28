@@ -6,7 +6,7 @@ claim-extraction + per-claim-verification pipeline.
 
 Key features:
 - Claim extraction from RAG answers
-- Per-claim verification with verdict, confidence, and evidence
+- Per-claim verification with verdict and evidence
 - Evidence retrieval (relevant document chunks per claim)
 - Evidence-first multi-step prompting
 - Self-consistency (multiple verification runs)

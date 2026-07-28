@@ -93,12 +93,6 @@ class VerificationOutput(BaseIOSchema):
         description="One of: SUPPORTED, CONTRADICTED, NOT_ENOUGH_INFO.",
         pattern=r"^(SUPPORTED|CONTRADICTED|NOT_ENOUGH_INFO)$",
     )
-    confidence: int = Field(
-        ...,
-        description="Confidence score 0-100.",
-        ge=0,
-        le=100,
-    )
     evidence: str = Field(
         ...,
         description=(

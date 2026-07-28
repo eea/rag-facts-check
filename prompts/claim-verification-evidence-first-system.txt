@@ -17,7 +17,7 @@ Classify the claim as:
 - NOT_ENOUGH_INFO: Evidence is insufficient to determine
 
 Step 4: Output
-Return JSON with fields: verdict, confidence, evidence, document_index, explanation.
+Return JSON with fields: verdict, evidence, document_index, explanation.
 - evidence: a verbatim quote from the source documents (copy-pasted, not paraphrased)
 - document_index: zero-based index of the document containing the evidence
   (0 = first document, 1 = second, etc.), or null if evidence is N/A
