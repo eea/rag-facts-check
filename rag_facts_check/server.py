@@ -307,16 +307,19 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         claim = report.claims[result.claim_index - 1]
 
         # Build claim span — if the LLM paraphrased the claim and no span
-        # was found, fall back to the full answer range so the claim is
-        # still included in the output.
+        # was found, mark it as skipped so the frontend doesn't try to
+        # render it inline (full-answer-range claims overlap every text node
+        # and cause text duplication).
+        skipped = False
         if claim.span:
             start_offset = claim.span.start
             end_offset = claim.span.end
         else:
             log.debug(
-                "_to_halloumi: claim[%d] has no span (LLM paraphrased), using full answer range",
+                "_to_halloumi: claim[%d] has no span (LLM paraphrased), marking as skipped",
                 result.claim_index,
             )
+            skipped = True
             start_offset = 0
             end_offset = len(answer_text)
 
@@ -345,6 +348,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
                 "segmentIds": segment_ids,
                 "score": score,
                 "rationale": result.explanation,
+                "skipped": skipped,
             }
         )
 

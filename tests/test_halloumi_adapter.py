@@ -191,3 +191,36 @@ class TestToHalloumiFormat:
         sample_report.answer_score = 7.5
         result = _to_halloumi_format(sample_report, ["Some source text."])
         assert result["answer_score"] == 7.5
+
+    def test_claim_without_span_is_marked_skipped(self):
+        """Claims without span (LLM paraphrased) are marked skipped=True."""
+        report = CheckReport(
+            answer="Some answer.",
+            overall_confidence=50.0,
+            overall_verdict="partially_supported",
+            claims=[
+                Claim(text="Has span.", index=1, span=Span(start=0, end=9)),
+                Claim(text="No span.", index=2, span=None),
+            ],
+            results=[
+                VerificationResult(
+                    claim="Has span.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=90,
+                    evidence="Evidence.",
+                    explanation="Found.",
+                ),
+                VerificationResult(
+                    claim="No span.",
+                    claim_index=2,
+                    verdict="not_enough_info",
+                    confidence=60,
+                    evidence="N/A",
+                    explanation="No info.",
+                ),
+            ],
+        )
+        result = _to_halloumi_format(report, ["Some source."], "Some answer.")
+        assert result["claims"][0]["skipped"] is False
+        assert result["claims"][1]["skipped"] is True
