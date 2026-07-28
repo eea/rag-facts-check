@@ -35,8 +35,9 @@ line-length = 100
 select = ["E", "F", "W", "I", "N", "B", "SIM", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-# Mock responses contain long literal strings
+# Mock responses and test data contain long literal strings
 "tests/mocks/*.py" = ["E501"]
+"tests/test_checker.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

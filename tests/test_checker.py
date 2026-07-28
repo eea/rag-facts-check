@@ -8,7 +8,7 @@ import pytest
 
 from rag_facts_check import EvidenceRetriever, RAGFactsChecker
 from rag_facts_check.checker import ClaimExtractor, ClaimVerifier
-from rag_facts_check.models import CheckReport, Claim, VerificationResult
+from rag_facts_check.models import CheckReport, Claim, Span, VerificationResult
 from rag_facts_check.retriever import DocumentChunk
 
 SAMPLE_ANSWER_BERLIN = (
@@ -219,6 +219,23 @@ EXPLANATION: No info."""
         result = verifier._parse_result(claim, response)
         assert result.verdict == "not_enough_info"
 
+    async def test_parse_json_result_with_document_index(self, mock_llm):
+        """JSON parsing should extract document_index."""
+        verifier = ClaimVerifier(mock_llm)
+        claim = Claim(text="Test.", index=1)
+        response = '{"verdict": "SUPPORTED", "confidence": 90, "evidence": "Paris is the capital.", "document_index": 1, "explanation": "Found in doc 2."}'
+        result = verifier._parse_result(claim, response)
+        assert result.verdict == "supported"
+        assert result.document_index == 1
+
+    async def test_parse_json_result_without_document_index(self, mock_llm):
+        """JSON without document_index should default to None."""
+        verifier = ClaimVerifier(mock_llm)
+        claim = Claim(text="Test.", index=1)
+        response = '{"verdict": "SUPPORTED", "confidence": 90, "evidence": "Evidence.", "explanation": "Found it."}'
+        result = verifier._parse_result(claim, response)
+        assert result.document_index is None
+
     async def test_parse_result_missing_fields(self, mock_llm):
         verifier = ClaimVerifier(mock_llm)
         claim = Claim(text="Test.", index=1)
@@ -274,6 +291,86 @@ EXPLANATION: test"""
 
 class TestRAGFactsChecker:
     """Tests for the RAGFactsChecker main pipeline."""
+
+    def test_find_evidence_span_targeted_match(self, mock_llm):
+        """When document_index is set, search that document first."""
+        checker = RAGFactsChecker(mock_llm)
+        docs = ["First document.", "Second document with evidence."]
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence="with evidence",
+            explanation="Found it.",
+            document_index=1,  # Points to second document
+        )
+        span = checker._find_evidence_span(result, docs, None)
+        assert span is not None
+        # Should find in document 1 (0-indexed)
+        assert docs[1][span.start : span.end] == "with evidence"
+
+    def test_find_evidence_span_fallback_all_docs(self, mock_llm):
+        """When document_index is wrong, fall back to searching all docs."""
+        checker = RAGFactsChecker(mock_llm)
+        docs = ["First document with evidence.", "Second document."]
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence="with evidence",
+            explanation="Found it.",
+            document_index=1,  # Wrong! Evidence is in doc 0
+        )
+        span = checker._find_evidence_span(result, docs, None)
+        assert span is not None
+        # Should still find it in document 0
+        assert docs[0][span.start : span.end] == "with evidence"
+
+    def test_find_evidence_span_chunk_fallback(self, mock_llm):
+        """When evidence quote doesn't match, use chunk offsets as fallback."""
+        checker = RAGFactsChecker(mock_llm)
+        docs = ["Some document text that doesn't match the evidence."]
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence="Paraphrased evidence that won't match",
+            explanation="Found it.",
+            document_index=0,
+        )
+        chunks = [
+            DocumentChunk(
+                text="Some document text",
+                doc_id="doc_1",
+                doc_index=0,
+                chunk_id=0,
+                start=0,
+                end=18,
+            )
+        ]
+        span = checker._find_evidence_span(result, docs, chunks)
+        assert span is not None
+        # Should use chunk offsets as fallback
+        assert span.start == 0
+        assert span.end == 18
+
+    def test_find_evidence_span_na_evidence(self, mock_llm):
+        """N/A evidence should return None."""
+        checker = RAGFactsChecker(mock_llm)
+        docs = ["Some document."]
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="not_enough_info",
+            confidence=60,
+            evidence="N/A",
+            explanation="No info.",
+        )
+        span = checker._find_evidence_span(result, docs, None)
+        assert span is None
 
     async def test_check_basic(self, checker):
         report = await checker.check(
@@ -456,3 +553,166 @@ class TestRAGFactsChecker:
         )
         if report.claims and report.results:
             assert len(report.results) == len(report.claims)
+
+    # ── Answer quality score tests ──
+
+    def test_answer_score_all_supported_all_cited(self, mock_llm):
+        """All claims supported with evidence → high score."""
+        checker = RAGFactsChecker(mock_llm)
+        results = [
+            VerificationResult(
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=95,
+                evidence="Evidence 1.",
+                explanation="Found it.",
+                evidence_span=Span(start=0, end=10),
+            ),
+            VerificationResult(
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="supported",
+                confidence=90,
+                evidence="Evidence 2.",
+                explanation="Found it.",
+                evidence_span=Span(start=20, end=30),
+            ),
+        ]
+        score = checker._compute_answer_score(results)
+        assert score >= 8.0  # High score for all supported + cited
+        assert score <= 10.0
+
+    def test_answer_score_with_contradictions(self, mock_llm):
+        """Contradicted claims drive score down."""
+        checker = RAGFactsChecker(mock_llm)
+        results = [
+            VerificationResult(
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence="Evidence.",
+                explanation="Found.",
+                evidence_span=Span(start=0, end=10),
+            ),
+            VerificationResult(
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="contradicted",
+                confidence=80,
+                evidence="Contradiction.",
+                explanation="Wrong.",
+                evidence_span=Span(start=20, end=30),
+            ),
+        ]
+        score = checker._compute_answer_score(results)
+        # 50% contradicted → contradiction_penalty = 1 - 1.5*0.5 = 0.25
+        # Score should be low
+        assert score < 3.0
+
+    def test_answer_score_uncited_penalty(self, mock_llm):
+        """Claims without evidence_span get citation penalty."""
+        checker = RAGFactsChecker(mock_llm)
+        results = [
+            VerificationResult(
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=95,
+                evidence="Paraphrased evidence",
+                explanation="Found it.",
+                # No evidence_span — uncited!
+            ),
+            VerificationResult(
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="supported",
+                confidence=90,
+                evidence="Paraphrased too",
+                explanation="Found it.",
+                # No evidence_span
+            ),
+        ]
+        score = checker._compute_answer_score(results)
+        # All supported (groundedness=10) but none cited → penalty=0.7
+        # score = 10 * 0.7 * 1.0 = 7.0
+        assert score == 7.0
+
+    def test_answer_score_not_enough_info(self, mock_llm):
+        """not_enough_info claims reduce score moderately."""
+        checker = RAGFactsChecker(mock_llm)
+        results = [
+            VerificationResult(
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence="Evidence.",
+                explanation="Found.",
+                evidence_span=Span(start=0, end=10),
+            ),
+            VerificationResult(
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="not_enough_info",
+                confidence=60,
+                evidence="N/A",
+                explanation="No info.",
+            ),
+        ]
+        score = checker._compute_answer_score(results)
+        # Mixed: one supported, one NEI → moderate score
+        assert 4.0 < score < 8.0
+
+    def test_answer_score_empty_results(self, mock_llm):
+        """No claims → score is 0."""
+        checker = RAGFactsChecker(mock_llm)
+        score = checker._compute_answer_score([])
+        assert score == 0.0
+
+    async def test_answer_score_in_report(self, checker):
+        """Check that answer_score is set on the report."""
+        report = await checker.check(
+            answer="Paris is the capital of France.",
+            documents=["Paris is the capital of France."],
+        )
+        assert report.answer_score >= 0
+        assert report.answer_score <= 10
+        assert report.to_dict()["answer_score"] == report.answer_score
+
+    def test_answer_score_severe_contradictions_floor_to_zero(self, mock_llm):
+        """33%+ contradictions should drive score to 0."""
+        checker = RAGFactsChecker(mock_llm)
+        results = [
+            VerificationResult(
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence="Evidence.",
+                explanation="Found.",
+                evidence_span=Span(start=0, end=10),
+            ),
+            VerificationResult(
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="contradicted",
+                confidence=80,
+                evidence="Contradiction.",
+                explanation="Wrong.",
+                evidence_span=Span(start=20, end=30),
+            ),
+            VerificationResult(
+                claim="Claim 3.",
+                claim_index=3,
+                verdict="contradicted",
+                confidence=85,
+                evidence="Another contradiction.",
+                explanation="Wrong again.",
+                evidence_span=Span(start=40, end=50),
+            ),
+        ]
+        score = checker._compute_answer_score(results)
+        # 2/3 = 67% contradicted → penalty = max(0, 1 - 1.5*0.67) = 0
+        assert score == 0.0

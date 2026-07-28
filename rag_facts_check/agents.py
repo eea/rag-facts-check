@@ -102,8 +102,16 @@ class VerificationOutput(BaseIOSchema):
     evidence: str = Field(
         ...,
         description=(
-            "Exact quote from source documents supporting or contradicting "
-            "the claim, or 'N/A' if not enough info."
+            "A VERBATIM quote from the source documents — copy-paste exact text, "
+            "do not paraphrase. This quote will be searched for in the original "
+            "documents, so it must match word-for-word. Use 'N/A' if not enough info."
+        ),
+    )
+    document_index: int | None = Field(
+        None,
+        description=(
+            "Zero-based index of the source document containing the evidence "
+            "(0 = first document, 1 = second, etc.). Null if evidence is N/A."
         ),
     )
     explanation: str = Field(

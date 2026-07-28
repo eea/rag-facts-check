@@ -10,6 +10,7 @@
 * [System Architecture](/architecture/architecture.md) - Module layout and component responsibilities.
 * [Data Flow](/architecture/data-flow.md) - Step-by-step pipeline from answer input to final report.
 * [Output Format](/architecture/output-format.md) - CheckReport structure, verdicts, and dimensions.
+* [Answer Quality Score](/architecture/answer-quality-score.md) - 0-10 numeric grade for overall answer quality.
 
 ## Guides
 

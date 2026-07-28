@@ -31,7 +31,7 @@ from .prompts import (
     format_documents,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
-from .spans import find_evidence_span, find_span_in_text
+from .spans import find_evidence_span, find_evidence_span_in_doc, find_span_in_text
 
 log = logging.getLogger("rag_facts_check")
 
@@ -372,6 +372,16 @@ class ClaimVerifier:
         else:
             verdict = "not_enough_info"
 
+        # Clamp document_index to valid range
+        doc_index = result.document_index
+        if doc_index is not None and (doc_index < 0 or doc_index >= len(documents)):
+            log.debug(
+                "verify: document_index %d out of range (%d docs), ignoring",
+                doc_index,
+                len(documents),
+            )
+            doc_index = None
+
         return VerificationResult(
             claim=claim.text,
             claim_index=claim.index,
@@ -379,6 +389,7 @@ class ClaimVerifier:
             confidence=result.confidence,
             evidence=result.evidence or "N/A",
             explanation=result.explanation or "",
+            document_index=doc_index,
         )
 
     def _aggregate_consistency(
@@ -426,6 +437,7 @@ class ClaimVerifier:
             evidence=majority_result.evidence,
             explanation=majority_result.explanation,
             document_id=doc_id,
+            document_index=majority_result.document_index,
             chunk_id=chunk_id,
             consistency_score=consistency_score,
         )
@@ -471,6 +483,10 @@ class ClaimVerifier:
         evidence = data.get("evidence", "N/A") or "N/A"
         explanation = data.get("explanation", "") or ""
 
+        # Parse document_index (0-based)
+        doc_index_raw = data.get("document_index")
+        doc_index = int(doc_index_raw) if doc_index_raw is not None else None
+
         return VerificationResult(
             claim=claim.text,
             claim_index=claim.index,
@@ -478,6 +494,7 @@ class ClaimVerifier:
             confidence=confidence,
             evidence=evidence,
             explanation=explanation,
+            document_index=doc_index,
         )
 
     def _parse_text_result(self, claim: Claim, response: str) -> VerificationResult:
@@ -720,14 +737,117 @@ class RAGFactsChecker:
             result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 
             # Compute evidence span in source documents
-            evidence_match = find_evidence_span(result.evidence, documents)
-            if evidence_match:
-                result.evidence_span = Span(start=evidence_match[1], end=evidence_match[2])
+            evidence_span = self._find_evidence_span(
+                result,
+                documents,
+                relevant_chunks,
+            )
+            if evidence_span:
+                result.evidence_span = evidence_span
 
             results.append(result)
 
         # Step 4: Aggregate
         return self._aggregate(answer, claims, results)
+
+    def _find_evidence_span(
+        self,
+        result: VerificationResult,
+        documents: list[str] | list[dict[str, str]],
+        relevant_chunks: list["DocumentChunk"] | None,
+    ) -> Span | None:
+        """Find the evidence span for a verification result.
+
+        Strategy:
+        1. If the LLM provided a document_index, search that document first
+        2. Fall back to searching all documents
+        3. If evidence quote doesn't match, use the top retrieved chunk's offsets
+        """
+        evidence = result.evidence
+        if not evidence or evidence == "N/A":
+            return None
+
+        # Step 1: Targeted search using document_index
+        if result.document_index is not None:
+            idx = result.document_index
+            if 0 <= idx < len(documents):
+                doc = documents[idx]
+                doc_text = doc["text"] if isinstance(doc, dict) else doc
+                span = find_evidence_span_in_doc(evidence, doc_text)
+                if span is not None:
+                    return Span(start=span[0], end=span[1])
+
+        # Step 2: Search all documents (existing behavior)
+        all_match = find_evidence_span(evidence, documents)
+        if all_match is not None:
+            return Span(start=all_match[1], end=all_match[2])
+
+        # Step 3: Fallback — use top retrieved chunk's offsets
+        if relevant_chunks:
+            top_chunk = relevant_chunks[0]
+            log.debug(
+                "_find_evidence_span: evidence quote not found, "
+                "using chunk fallback (doc=%s, chunk=%d, offsets=%d-%d)",
+                top_chunk.doc_id,
+                top_chunk.chunk_id,
+                top_chunk.start,
+                top_chunk.end,
+            )
+            return Span(start=top_chunk.start, end=top_chunk.end)
+
+        return None
+
+    # Answer quality score constants
+    _SCORE_NEI_WEIGHT = 0.4  # not_enough_info verdict weight
+    _SCORE_CITATION_MAX_REDUCTION = 0.3  # max 30% reduction for uncited claims
+    _SCORE_CONTRADICTION_MULTIPLIER = 1.5  # contradictions drive score to zero
+
+    def _compute_answer_score(
+        self,
+        results: list[VerificationResult],
+    ) -> float:
+        """Compute a 0-10 answer quality score from verification results.
+
+        Three multiplicative factors:
+        1. Groundedness base — weighted average of verdicts scaled to 0-10
+        2. Citation penalty — reduction for claims without evidence segments
+        3. Contradiction penalty — harsh reduction for contradicted claims
+
+        Returns:
+            Score 0-10, rounded to 1 decimal place.
+        """
+        total = len(results)
+        if total == 0:
+            return 0.0
+
+        # 1. Groundedness base (0-10)
+        verdict_weights = {
+            "supported": 1.0,
+            "not_enough_info": self._SCORE_NEI_WEIGHT,
+            "contradicted": 0.0,
+        }
+        weighted_sum = sum(
+            r.confidence * verdict_weights.get(r.verdict, 0.5) for r in results
+        )
+        max_possible = sum(r.confidence for r in results)
+        groundedness = (weighted_sum / max_possible * 10) if max_possible > 0 else 0.0
+
+        # 2. Citation penalty (1.0 = no penalty, 0.7 = max penalty)
+        cited = sum(1 for r in results if r.evidence_span is not None)
+        citation_ratio = cited / total
+        citation_penalty = 1.0 - (
+            self._SCORE_CITATION_MAX_REDUCTION * (1 - citation_ratio)
+        )
+
+        # 3. Contradiction penalty (1.0 = no penalty, 0 = max penalty)
+        contradicted = sum(1 for r in results if r.verdict == "contradicted")
+        contradiction_penalty = max(
+            0.0, 1.0 - (self._SCORE_CONTRADICTION_MULTIPLIER * contradicted / total)
+        )
+
+        # Compose
+        raw = groundedness * citation_penalty * contradiction_penalty
+        return round(max(0.0, min(10.0, raw)), 1)
 
     def _aggregate(
         self,
@@ -781,8 +901,12 @@ class RAGFactsChecker:
             total, supported, contradicted, not_enough, overall_confidence, overall_verdict
         )
 
+        # Compute answer quality score
+        answer_score = self._compute_answer_score(results)
+
         return CheckReport(
             answer=answer,
+            answer_score=answer_score,
             overall_confidence=overall_confidence,
             overall_verdict=overall_verdict,
             claims=claims,

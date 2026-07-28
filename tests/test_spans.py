@@ -1,6 +1,10 @@
 """Tests for span matching utilities."""
 
-from rag_facts_check.spans import find_evidence_span, find_span_in_text
+from rag_facts_check.spans import (
+    find_evidence_span,
+    find_evidence_span_in_doc,
+    find_span_in_text,
+)
 
 
 class TestFindSpanInText:
@@ -108,3 +112,30 @@ class TestFindEvidenceSpan:
         assert result is not None
         doc_id, start, end = result
         assert docs[0]["text"][start:end] == needle
+
+
+class TestFindEvidenceSpanInDoc:
+    """Tests for find_evidence_span_in_doc (targeted single-doc search)."""
+
+    def test_exact_match(self):
+        text = "Paris is the capital of France."
+        result = find_evidence_span_in_doc("Paris is the capital", text)
+        assert result == (0, 20)  # len("Paris is the capital") == 20
+
+    def test_no_match(self):
+        text = "Paris is the capital of France."
+        result = find_evidence_span_in_doc("Berlin is the capital", text)
+        assert result is None
+
+    def test_na_evidence(self):
+        result = find_evidence_span_in_doc("N/A", "Some text")
+        assert result is None
+
+    def test_empty_evidence(self):
+        result = find_evidence_span_in_doc("", "Some text")
+        assert result is None
+
+    def test_fuzzy_match(self):
+        text = "The total phosphorus in lakes has fallen steadily."
+        result = find_evidence_span_in_doc("Total phosphorus in lakes has fallen", text)
+        assert result is not None

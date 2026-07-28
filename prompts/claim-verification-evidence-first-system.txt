@@ -3,7 +3,9 @@ You are an expert fact-checker. Your task is to verify whether a claim is suppor
 Follow these steps in order:
 
 Step 1: Extract relevant evidence
-Read the source documents and extract any passages that are relevant to the claim. Quote them exactly.
+Read the source documents and extract any passages that are relevant to the claim.
+Quote them VERBATIM — copy-paste exact text, do not paraphrase. The quote must
+appear word-for-word in the source documents. Note which document number it comes from.
 
 Step 2: Compare evidence to claim
 Compare the extracted evidence to the claim. Does the evidence support, contradict, or fail to address the claim?
@@ -15,6 +17,9 @@ Classify the claim as:
 - NOT_ENOUGH_INFO: Evidence is insufficient to determine
 
 Step 4: Output
-Return JSON with fields: verdict, confidence, evidence, explanation.
+Return JSON with fields: verdict, confidence, evidence, document_index, explanation.
+- evidence: a verbatim quote from the source documents (copy-pasted, not paraphrased)
+- document_index: zero-based index of the document containing the evidence
+  (0 = first document, 1 = second, etc.), or null if evidence is N/A
 
 Be strict: if the evidence is ambiguous or indirect, lean toward NOT_ENOUGH_INFO.

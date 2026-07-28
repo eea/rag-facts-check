@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
         components work without changes.
 
         Request: {"answer": "...", "sources": ["doc1...", "doc2..."]}
-        Response: {"claims": [...], "segments": {...}}
+        Response: {"answer_score": 0-10, "claims": [...], "segments": {...}}
         """
         checker = _get_checker()
 
@@ -262,12 +262,13 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
     Halloumi format:
     {
+      "answer_score": 7.5,
       "claims": [
         {
           "startOffset": 12,
           "endOffset": 58,
           "segmentIds": ["0", "2"],
-          "score": 0.85,
+          "score": 1.0,
           "rationale": "..."
         }
       ],
@@ -279,7 +280,19 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
     The segments are computed from evidence_spans, mapped into the
     joined sources string so the frontend can highlight them.
+
+    Per-claim score is verdict-based (not raw LLM confidence):
+    - supported: 1.0
+    - not_enough_info: 0.4
+    - contradicted: 0.0
     """
+    # Verdict-to-score mapping for per-claim scores
+    verdict_scores = {
+        "supported": 1.0,
+        "not_enough_info": 0.4,
+        "contradicted": 0.0,
+    }
+
     # Build a mapping from source index to start offset in joined string
     source_offsets: list[int] = []
     offset = 0
@@ -318,8 +331,8 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
             }
             segment_ids.append(seg_id)
 
-        # Map confidence (0-100) to score (0-1)
-        score = result.confidence / 100.0
+        # Verdict-based score (not raw LLM confidence)
+        score = verdict_scores.get(result.verdict, 0.4)
 
         # Extract the claim text from the answer using the span
         claim_string = answer_text[start_offset:end_offset] if claim.span else claim.text
@@ -330,7 +343,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
                 "startOffset": start_offset,
                 "endOffset": end_offset,
                 "segmentIds": segment_ids,
-                "score": round(score, 4),
+                "score": score,
                 "rationale": result.explanation,
             }
         )
@@ -342,4 +355,8 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         len(report.results),
         with_spans,
     )
-    return {"claims": claims, "segments": segments}
+    return {
+        "answer_score": report.answer_score,
+        "claims": claims,
+        "segments": segments,
+    }

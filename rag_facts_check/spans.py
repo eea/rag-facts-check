@@ -67,6 +67,32 @@ def find_span_in_text(needle: str, haystack: str) -> tuple[int, int] | None:
     return (start, end)
 
 
+def find_evidence_span_in_doc(
+    evidence: str,
+    text: str,
+) -> tuple[int, int] | None:
+    """Find the character span of *evidence* in a single document text.
+
+    Args:
+        evidence: The evidence quote to find.
+        text: The document text to search in.
+
+    Returns:
+        ``(start, end)`` character offsets, or ``None`` if not found.
+    """
+    if not evidence or evidence == "N/A":
+        return None
+
+    # Try exact match first
+    exact = text.find(evidence)
+    if exact >= 0:
+        return (exact, exact + len(evidence))
+
+    # Try fuzzy match
+    span = find_span_in_text(evidence, text)
+    return span
+
+
 def find_evidence_span(
     evidence: str,
     documents: list[str] | list[dict[str, str]],

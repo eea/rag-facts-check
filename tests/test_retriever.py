@@ -55,6 +55,33 @@ class TestEvidenceRetriever:
         assert chunks[0].doc_id == "doc_1"
         assert chunks[0].chunk_id == 0
 
+    def test_chunk_documents_tracks_offsets(self):
+        """Chunks should have valid start/end offsets into the original document."""
+        retriever = EvidenceRetriever(chunk_size=100)
+        doc_text = "Paris is the capital of France. The Eiffel Tower was built in 1889."
+        docs = [doc_text]
+        chunks = retriever.chunk_documents(docs)
+        for chunk in chunks:
+            # The chunk's text (without title prefix) should be findable at the offsets
+            text_without_prefix = chunk.text
+            if text_without_prefix.startswith("Title: "):
+                text_without_prefix = text_without_prefix.split(". ", 1)[1]
+            assert chunk.start >= 0
+            assert chunk.end <= len(doc_text)
+            # The chunk text should be a substring of the original
+            assert text_without_prefix in doc_text
+
+    def test_chunk_documents_tracks_doc_index(self):
+        """Chunks should have the correct 0-based document index."""
+        retriever = EvidenceRetriever(chunk_size=100)
+        docs = ["First document text.", "Second document text.", "Third document text."]
+        chunks = retriever.chunk_documents(docs)
+        for chunk in chunks:
+            assert chunk.doc_index in (0, 1, 2)
+        # Verify each doc_index appears
+        indices = sorted(set(c.doc_index for c in chunks))
+        assert indices == [0, 1, 2]
+
     def test_chunk_documents_multiple(self):
         retriever = EvidenceRetriever(chunk_size=100)
         docs = [
