@@ -135,7 +135,33 @@ def create_app() -> FastAPI:
                 temperature=temperature,
                 chat_mode=True,
             )
-            _checker = RAGFactsChecker(_llm)
+
+            # Build instructor-wrapped client for structured output
+            try:
+                import instructor
+                from openai import AsyncOpenAI
+
+                base_url = api_base.rstrip("/")
+                openai_client = AsyncOpenAI(
+                    base_url=base_url,
+                    api_key=api_key or "not-needed",
+                )
+                instructor_client = instructor.from_openai(
+                    openai_client, mode=instructor.Mode.MD_JSON
+                )
+            except ImportError:
+                instructor_client = None
+                log.warning(
+                    "instructor/openai not available, falling back to raw LLM calls. "
+                    "Install with: pip install instructor openai"
+                )
+
+            _checker = RAGFactsChecker(
+                _llm,
+                instructor_client=instructor_client,
+                model=model,
+                temperature=temperature,
+            )
         return _checker
 
     # -----------------------------------------------------------------------
@@ -162,9 +188,7 @@ def create_app() -> FastAPI:
 
         # Convert plain string sources to document dicts
         sources = [s for s in request.sources if s.strip()]
-        documents = [
-            {"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(sources)
-        ]
+        documents = [{"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(sources)]
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
@@ -189,7 +213,10 @@ def create_app() -> FastAPI:
             for i, r in enumerate(report.results):
                 log.info(
                     "  result[%d]: verdict=%s confidence=%d span=%s",
-                    i, r.verdict, r.confidence, r.evidence_span,
+                    i,
+                    r.verdict,
+                    r.confidence,
+                    r.evidence_span,
                 )
             return _to_halloumi_format(report, sources, request.answer)
         except Exception as e:
@@ -295,11 +322,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         score = result.confidence / 100.0
 
         # Extract the claim text from the answer using the span
-        claim_string = (
-            answer_text[start_offset:end_offset]
-            if claim.span
-            else claim.text
-        )
+        claim_string = answer_text[start_offset:end_offset] if claim.span else claim.text
 
         claims.append(
             {
@@ -312,11 +335,11 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
             }
         )
 
-    with_spans = sum(
-        1 for r in report.results if report.claims[r.claim_index - 1].span
-    )
+    with_spans = sum(1 for r in report.results if report.claims[r.claim_index - 1].span)
     log.info(
         "_to_halloumi: %d claims in output (of %d results, %d with spans)",
-        len(claims), len(report.results), with_spans,
+        len(claims),
+        len(report.results),
+        with_spans,
     )
     return {"claims": claims, "segments": segments}

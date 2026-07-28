@@ -14,14 +14,21 @@ import json
 import logging
 import re
 from collections import Counter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from atomic_agents import AtomicAgent
 
 from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
     CLAIM_EXTRACTION_SYSTEM,
+    CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
+    CLAIM_VERIFICATION_SYSTEM,
     format_claim_extraction_prompt,
     format_claim_verification_evidence_first_prompt,
     format_claim_verification_prompt,
+    format_documents,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
 from .spans import find_evidence_span, find_span_in_text
@@ -38,17 +45,29 @@ class ClaimExtractor:
     Uses an LLM to parse the answer and identify individual verifiable
     statements. Supports multi-turn refinement: if a claim's original_text
     cannot be located in the answer, the extractor asks the LLM to fix it.
+
+    When an atomic-agents extraction_agent is provided, uses structured
+    output with automatic retries for reliable JSON parsing.
     """
 
-    def __init__(self, llm: LLM, max_new_tokens: int = 512):
+    def __init__(
+        self,
+        llm: LLM,
+        max_new_tokens: int = 512,
+        extraction_agent: "AtomicAgent | None" = None,
+    ):
         self.llm = llm
         self.max_new_tokens = max_new_tokens
+        self.extraction_agent = extraction_agent
 
     async def extract(self, answer: str) -> list[Claim]:
         """Extract factual claims from *answer*.
 
         Uses multi-turn refinement: claims whose original_text cannot be
         found in the answer are sent back to the LLM for correction.
+
+        When an extraction_agent is available, uses structured output
+        with automatic retries for reliable JSON parsing.
 
         Args:
             answer: The RAG-generated answer text.
@@ -60,15 +79,17 @@ class ClaimExtractor:
             return []
 
         # Round 1: initial extraction
-        prompt = format_claim_extraction_prompt(answer)
-        response = await self.llm.generate(
-            prompt,
-            max_new_tokens=self.max_new_tokens,
-            temperature=0.1,
-        )
-
-        log.debug("extract: LLM response (%d chars): %s", len(response), response[:500])
-        raw_claims = self._parse_extraction_response(response)
+        if self.extraction_agent is not None:
+            raw_claims = await self._extract_with_agent(answer)
+        else:
+            prompt = format_claim_extraction_prompt(answer)
+            response = await self.llm.generate(
+                prompt,
+                max_new_tokens=self.max_new_tokens,
+                temperature=0.1,
+            )
+            log.debug("extract: LLM response (%d chars): %s", len(response), response[:500])
+            raw_claims = self._parse_extraction_response(response)
 
         # Multi-turn refinement: fix claims whose original_text isn't in answer
         for attempt in range(1, _MAX_EXTRACTION_RETRIES + 1):
@@ -78,7 +99,9 @@ class ClaimExtractor:
 
             log.info(
                 "extract: %d/%d claims need refinement (attempt %d)",
-                len(unmatched), len(raw_claims), attempt,
+                len(unmatched),
+                len(raw_claims),
+                attempt,
             )
             refined = await self._refine_claims(answer, unmatched)
             # Merge: keep matched, replace unmatched with refined
@@ -157,6 +180,23 @@ class ClaimExtractor:
         """Find text in answer, returning (start, end) or None."""
         return find_span_in_text(text, answer)
 
+    async def _extract_with_agent(self, answer: str) -> list[dict[str, str]]:
+        """Extract claims using the atomic agent with structured output."""
+        from .agents import ClaimExtractionInput
+
+        self.extraction_agent.reset_history()
+        input_schema = ClaimExtractionInput(answer=answer)
+        result = await self.extraction_agent.run_async(input_schema)
+
+        log.debug("extract: agent returned %d claims", len(result.claims) if result.claims else 0)
+        return [
+            {
+                "claim": c.claim,
+                "original_text": c.original_text or c.claim,
+            }
+            for c in (result.claims or [])
+        ]
+
     async def _refine_claims(
         self, answer: str, unmatched: list[dict[str, str]]
     ) -> list[dict[str, str]]:
@@ -170,8 +210,8 @@ class ClaimExtractor:
         problems = []
         for i, item in enumerate(unmatched, 1):
             problems.append(
-                f"  {i}. claim=\"{item['claim']}\" "
-                f"original_text=\"{item.get('original_text', '')}\" "
+                f'  {i}. claim="{item["claim"]}" '
+                f'original_text="{item.get("original_text", "")}" '
                 f"(NOT FOUND in answer)"
             )
         problems_text = "\n".join(problems)
@@ -223,6 +263,7 @@ class ClaimVerifier:
     - Evidence-first multi-step prompting
     - Self-consistency (multiple runs with different temperatures)
     - Evidence retrieval (only relevant document chunks are passed)
+    - Structured output via atomic-agents (when verification_agent is provided)
     """
 
     def __init__(
@@ -233,6 +274,7 @@ class ClaimVerifier:
         max_chars_per_doc: int = 2000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
+        verification_agent: "AtomicAgent | None" = None,
     ):
         """Initialize the claim verifier.
 
@@ -245,6 +287,7 @@ class ClaimVerifier:
                 If >1, runs verification multiple times with increasing temperatures
                 and aggregates via majority vote.
             evidence_first: If True, use the evidence-first multi-step prompt.
+            verification_agent: Optional atomic-agents agent for structured output.
         """
         self.llm = llm
         self.max_new_tokens = max_new_tokens
@@ -252,6 +295,7 @@ class ClaimVerifier:
         self.max_chars_per_doc = max_chars_per_doc
         self.num_consistency_runs = num_consistency_runs
         self.evidence_first = evidence_first
+        self.verification_agent = verification_agent
 
     async def verify(
         self,
@@ -294,6 +338,9 @@ class ClaimVerifier:
         temperature: float = 0.1,
     ) -> VerificationResult:
         """Single verification pass."""
+        if self.verification_agent is not None:
+            return await self._verify_with_agent(claim, documents)
+
         if self.evidence_first:
             prompt = format_claim_verification_evidence_first_prompt(claim.text, documents)
         else:
@@ -306,6 +353,33 @@ class ClaimVerifier:
         )
 
         return self._parse_result(claim, response)
+
+    async def _verify_with_agent(self, claim: Claim, documents: list[str]) -> VerificationResult:
+        """Verify a claim using the atomic agent with structured output."""
+        from .agents import VerificationInput
+
+        formatted_docs = format_documents(documents)
+        self.verification_agent.reset_history()
+        input_schema = VerificationInput(claim=claim.text, documents=formatted_docs)
+        result = await self.verification_agent.run_async(input_schema)
+
+        # Map verdict variants
+        raw_verdict = str(result.verdict).upper().strip()
+        if "SUPPORTED" in raw_verdict and "NOT" not in raw_verdict:
+            verdict = "supported"
+        elif "CONTRADICTED" in raw_verdict:
+            verdict = "contradicted"
+        else:
+            verdict = "not_enough_info"
+
+        return VerificationResult(
+            claim=claim.text,
+            claim_index=claim.index,
+            verdict=verdict,
+            confidence=result.confidence,
+            evidence=result.evidence or "N/A",
+            explanation=result.explanation or "",
+        )
 
     def _aggregate_consistency(
         self,
@@ -496,6 +570,9 @@ class RAGFactsChecker:
         evidence_first: bool = True,
         use_evidence_retrieval: bool = True,
         retriever: EvidenceRetriever | None = None,
+        instructor_client=None,
+        model: str = "gemma",
+        temperature: float = 0.1,
     ):
         """Initialize the checker.
 
@@ -513,6 +590,11 @@ class RAGFactsChecker:
                 per claim before verification (reduces context, improves accuracy).
             retriever: Custom :class:`EvidenceRetriever` instance. If None,
                 a default one is created.
+            instructor_client: Optional instructor-wrapped client for structured
+                output with automatic retries. When provided, atomic agents are
+                used instead of raw LLM calls.
+            model: Model name (used when building atomic agents).
+            temperature: Sampling temperature (used when building atomic agents).
         """
         self.llm = llm
         self.max_claims = max_claims
@@ -533,6 +615,34 @@ class RAGFactsChecker:
             num_consistency_runs=num_consistency_runs,
             evidence_first=evidence_first,
         )
+
+        # Build atomic agents when instructor client is available
+        if instructor_client is not None:
+            from .agents import (
+                make_claim_extraction_agent,
+                make_verification_agent,
+            )
+
+            extraction_agent = make_claim_extraction_agent(
+                client=instructor_client,
+                model=model,
+                system_prompt=CLAIM_EXTRACTION_SYSTEM,
+                temperature=temperature,
+            )
+            verification_system = (
+                CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM
+                if evidence_first
+                else CLAIM_VERIFICATION_SYSTEM
+            )
+            verification_agent = make_verification_agent(
+                client=instructor_client,
+                model=model,
+                system_prompt=verification_system,
+                temperature=temperature,
+                evidence_first=evidence_first,
+            )
+            self.extractor.extraction_agent = extraction_agent
+            self.verifier.verification_agent = verification_agent
 
     async def check(
         self,
@@ -564,7 +674,8 @@ class RAGFactsChecker:
             else:
                 log.debug(
                     "check: could not locate claim[%d] in answer: %s",
-                    claim.index, search_text[:80],
+                    claim.index,
+                    search_text[:80],
                 )
 
         if not claims:

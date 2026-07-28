@@ -126,7 +126,7 @@ def make_claim_extraction_agent(
         AgentConfig(
             client=client,
             model=model,
-            mode=Mode.JSON,
+            mode=Mode.MD_JSON,
             model_api_parameters={
                 "temperature": temperature,
                 "max_retries": max_retries,
@@ -160,7 +160,7 @@ def make_verification_agent(
         AgentConfig(
             client=client,
             model=model,
-            mode=Mode.JSON,
+            mode=Mode.MD_JSON,
             model_api_parameters={
                 "temperature": temperature,
                 "max_retries": max_retries,
