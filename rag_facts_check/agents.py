@@ -33,8 +33,9 @@ class ExtractedClaim(BaseIOSchema):
     claim: str = Field(
         ...,
         description=(
-            "The atomic factual claim, rephrased for clarity if needed. "
-            "Must be a single verifiable statement — not a compound of multiple facts."
+            "A complete factual statement with a subject and predicate "
+            "(e.g. 'X does Y', not just 'X'). Must be verifiable. "
+            "Do not extract bare names or noun phrases."
         ),
     )
     original_text: str = Field(
