@@ -6,7 +6,7 @@ claim-extraction + per-claim-verification pipeline.
 
 Key features:
 - Claim extraction from RAG answers
-- Per-claim verification with verdict, confidence, and evidence
+- Per-claim verification with verdict and evidence
 - Evidence retrieval (relevant document chunks per claim)
 - Evidence-first multi-step prompting
 - Self-consistency (multiple verification runs)
@@ -16,7 +16,7 @@ Key features:
 
 from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
 from .llm import APILLM, LLM, AsyncAPILLM, ChatLLM, HuggingFaceLLM
-from .models import CheckReport, Claim, Span, VerificationResult
+from .models import CheckReport, Claim, Span, VerificationResult, score_label
 from .retriever import DocumentChunk, EvidenceRetriever
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "Span",
     "VerificationResult",
     "CheckReport",
+    "score_label",
     "LLM",
     "HuggingFaceLLM",
     "APILLM",

@@ -67,9 +67,25 @@ Drop-in replacement for the existing halloumi middleware. Accepts the same reque
 ```json
 {
   "answer": "Paris is the capital of France.",
-  "sources": ["Paris is the capital...", "The Eiffel Tower..."]
+  "sources": [
+    { "text": "Paris is the capital...", "title": "Paris overview" },
+    { "text": "The Eiffel Tower...", "title": "Eiffel Tower" }
+  ]
 }
 ```
+
+Sources accept either plain strings or structured objects. Structured sources
+(`HalloumiSource`) carry document metadata that improves verification accuracy:
+
+| Field | Type | Description |
+|---|---|---|
+| `text` | `str` | Document text (required) |
+| `title` | `str \| null` | Document title or semantic identifier |
+| `source_type` | `str \| null` | Source type (e.g. `web`, `file`) |
+| `link` | `str \| null` | Source URL |
+
+Plain strings are still accepted for backward compatibility but the LLM will
+not have document title context for verification.
 
 **Response:**
 
@@ -80,7 +96,7 @@ Drop-in replacement for the existing halloumi middleware. Accepts the same reque
       "startOffset": 0,
       "endOffset": 32,
       "segmentIds": ["0"],
-      "score": 0.95,
+      "score": 1.0,
       "rationale": "Document states this explicitly."
     }
   ],
@@ -89,6 +105,9 @@ Drop-in replacement for the existing halloumi middleware. Accepts the same reque
   }
 }
 ```
+
+Claim scores are categorical: `1.0` (supported), `0.4` (not enough info),
+`0.0` (contradicted). The frontend renders these as `High`, `Low`, `Failed`.
 
 ### `GET /health` — Health check
 

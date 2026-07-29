@@ -75,11 +75,22 @@ class CheckRequest(BaseModel):
     options: CheckOptions | None = Field(None, description="Optional pipeline overrides")
 
 
+class HalloumiSource(BaseModel):
+    """A structured source document with optional metadata."""
+
+    text: str = Field(..., description="Document text")
+    title: str | None = Field(None, description="Document title or semantic identifier")
+    source_type: str | None = Field(None, description="Source type (web, file, etc.)")
+    link: str | None = Field(None, description="Source URL")
+
+
 class HalloumiRequest(BaseModel):
     """Request body for POST /halloumi/generate (halloumi-compatible)."""
 
     answer: str = Field(..., description="RAG-generated answer to verify")
-    sources: list[str] = Field(..., description="Source document texts (plain strings)")
+    sources: list[str | HalloumiSource] = Field(
+        ..., description="Source documents as plain strings or structured dicts"
+    )
     max_context_segments: int = Field(0, description="Max context segments (unused, for compat)")
 
 
@@ -182,19 +193,39 @@ def create_app() -> FastAPI:
         components work without changes.
 
         Request: {"answer": "...", "sources": ["doc1...", "doc2..."]}
-        Response: {"claims": [...], "segments": {...}}
+        Response: {"answer_score": 0-10, "claims": [...], "segments": {...}}
         """
         checker = _get_checker()
 
-        # Convert plain string sources to document dicts
-        sources = [s for s in request.sources if s.strip()]
-        documents = [{"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(sources)]
+        # Normalize sources: plain strings or structured dicts -> document dicts
+        documents = []
+        raw_texts: list[str] = []  # for _to_halloumi_format span mapping
+        for i, src in enumerate(request.sources):
+            if isinstance(src, str):
+                text = src.strip()
+                if not text:
+                    continue
+                documents.append({"doc_id": f"doc_{i + 1}", "text": text})
+                raw_texts.append(text)
+            else:
+                # Structured HalloumiSource
+                text = src.text.strip() if src.text else ""
+                if not text:
+                    continue
+                doc: dict[str, str | None] = {
+                    "doc_id": f"doc_{i + 1}",
+                    "text": text,
+                }
+                if src.title:
+                    doc["title"] = src.title
+                documents.append(doc)
+                raw_texts.append(text)
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
             len(request.answer),
             len(request.sources),
-            len(sources),
+            len(documents),
         )
 
         try:
@@ -218,7 +249,7 @@ def create_app() -> FastAPI:
                     r.confidence,
                     r.evidence_span,
                 )
-            return _to_halloumi_format(report, sources, request.answer)
+            return _to_halloumi_format(report, raw_texts, request.answer)
         except Exception as e:
             log.exception("halloumi/generate error")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -257,17 +288,39 @@ app = create_app()
 # ---------------------------------------------------------------------------
 
 
+def _find_source_index(evidence: str, sources: list[str]) -> int | None:
+    """Find which source document contains the evidence text.
+
+    Searches each source for the evidence string (case-insensitive,
+    with whitespace normalization). Returns the source index or None.
+    """
+    if not evidence:
+        return None
+
+    # Normalize evidence for matching: collapse whitespace, strip
+    normalized = " ".join(evidence.split()).lower()
+    if len(normalized) < 10:
+        return None  # too short to match reliably
+
+    for i, source in enumerate(sources):
+        source_normalized = " ".join(source.split()).lower()
+        if normalized in source_normalized:
+            return i
+    return None
+
+
 def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
     Halloumi format:
     {
+      "answer_score": 7.5,
       "claims": [
         {
           "startOffset": 12,
           "endOffset": 58,
           "segmentIds": ["0", "2"],
-          "score": 0.85,
+          "score": 1.0,
           "rationale": "..."
         }
       ],
@@ -279,13 +332,25 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
     The segments are computed from evidence_spans, mapped into the
     joined sources string so the frontend can highlight them.
+
+    Per-claim score is verdict-based (not raw LLM confidence):
+    - supported: 1.0
+    - not_enough_info: 0.4
+    - contradicted: 0.0
     """
+    # Verdict-to-score mapping for per-claim scores
+    verdict_scores = {
+        "supported": 1.0,
+        "not_enough_info": 0.4,
+        "contradicted": 0.0,
+    }
+
     # Build a mapping from source index to start offset in joined string
     source_offsets: list[int] = []
     offset = 0
     for src in sources:
         source_offsets.append(offset)
-        offset += len(src) + 1  # +1 for the newline
+        offset += len(src)
 
     segments: dict[str, dict[str, int]] = {}
     claims: list[dict] = []
@@ -294,32 +359,63 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         claim = report.claims[result.claim_index - 1]
 
         # Build claim span — if the LLM paraphrased the claim and no span
-        # was found, fall back to the full answer range so the claim is
-        # still included in the output.
+        # was found, mark it as skipped so the frontend doesn't try to
+        # render it inline (full-answer-range claims overlap every text node
+        # and cause text duplication).
+        skipped = False
         if claim.span:
             start_offset = claim.span.start
             end_offset = claim.span.end
         else:
             log.debug(
-                "_to_halloumi: claim[%d] has no span (LLM paraphrased), using full answer range",
+                "_to_halloumi: claim[%d] has no span (LLM paraphrased), marking as skipped",
                 result.claim_index,
             )
+            skipped = True
             start_offset = 0
             end_offset = len(answer_text)
 
         # Build segment IDs from evidence spans
         segment_ids: list[str] = []
-        if result.evidence_span:
-            seg_id = str(len(segments))
-            segments[seg_id] = {
-                "id": int(seg_id),
-                "startOffset": result.evidence_span.start,
-                "endOffset": result.evidence_span.end,
-            }
-            segment_ids.append(seg_id)
+        if result.evidence_span and result.evidence_span.start != result.evidence_span.end:
+            # evidence_span offsets are relative to the individual document
+            # the backend searched. Map them into the joined sources string
+            # by finding which source contains the evidence text.
+            evidence_text = result.evidence.strip().strip('"')
+            source_idx = _find_source_index(evidence_text, sources)
 
-        # Map confidence (0-100) to score (0-1)
-        score = result.confidence / 100.0
+            if source_idx is not None:
+                joined_start = source_offsets[source_idx] + result.evidence_span.start
+                joined_end = source_offsets[source_idx] + result.evidence_span.end
+            else:
+                # Fallback: use raw offsets (may be wrong)
+                log.debug(
+                    "_to_halloumi: evidence not found in sources, using raw span %s-%s",
+                    result.evidence_span.start,
+                    result.evidence_span.end,
+                )
+                joined_start = result.evidence_span.start
+                joined_end = result.evidence_span.end
+
+            # Skip zero-length or invalid spans
+            if joined_start >= 0 and joined_end > joined_start:
+                seg_id = str(len(segments))
+                segments[seg_id] = {
+                    "id": int(seg_id),
+                    "startOffset": joined_start,
+                    "endOffset": joined_end,
+                }
+                segment_ids.append(seg_id)
+            else:
+                log.debug(
+                    "_to_halloumi: skipping invalid span %s-%s for claim[%d]",
+                    joined_start,
+                    joined_end,
+                    result.claim_index,
+                )
+
+        # Verdict-based score (not raw LLM confidence)
+        score = verdict_scores.get(result.verdict, 0.4)
 
         # Extract the claim text from the answer using the span
         claim_string = answer_text[start_offset:end_offset] if claim.span else claim.text
@@ -330,8 +426,9 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
                 "startOffset": start_offset,
                 "endOffset": end_offset,
                 "segmentIds": segment_ids,
-                "score": round(score, 4),
+                "score": score,
                 "rationale": result.explanation,
+                "skipped": skipped,
             }
         )
 
@@ -342,4 +439,8 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         len(report.results),
         with_spans,
     )
-    return {"claims": claims, "segments": segments}
+    return {
+        "answer_score": report.answer_score,
+        "claims": claims,
+        "segments": segments,
+    }

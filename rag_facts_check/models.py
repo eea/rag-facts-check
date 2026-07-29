@@ -2,6 +2,33 @@
 
 from dataclasses import dataclass, field
 
+# ---------------------------------------------------------------------------
+# Answer quality score helpers
+# ---------------------------------------------------------------------------
+
+
+def score_label(score: float) -> str:
+    """Map a 0-10 answer quality score to a human-readable label.
+
+    Args:
+        score: Answer quality score on a 0-10 scale.
+
+    Returns:
+        One of: "Excellent", "Good", "Acceptable", "Poor", "Failing", "No claims".
+    """
+    if score >= 9:
+        return "Excellent"
+    elif score >= 7:
+        return "Good"
+    elif score >= 5:
+        return "Acceptable"
+    elif score >= 3:
+        return "Poor"
+    elif score > 0:
+        return "Failing"
+    else:
+        return "No claims"
+
 
 @dataclass
 class Span:
@@ -45,6 +72,8 @@ class VerificationResult:
         evidence: Exact quote from source documents (or "N/A").
         explanation: Brief explanation of the reasoning.
         document_id: ID of the source document containing the evidence (if available).
+        document_index: 0-based index of the source document containing the evidence
+            (if the LLM identified it). Used for targeted evidence span matching.
         chunk_id: ID of the document chunk containing the evidence (if available).
         consistency_score: Agreement across multiple verification runs (0-1, for self-consistency).
     """
@@ -56,6 +85,7 @@ class VerificationResult:
     evidence: str
     explanation: str
     document_id: str | None = None
+    document_index: int | None = None
     chunk_id: str | None = None
     consistency_score: float | None = None
     evidence_span: Span | None = None
@@ -67,6 +97,8 @@ class CheckReport:
 
     Attributes:
         answer: The original RAG-generated answer.
+        answer_score: Overall answer quality grade on a 0-10 scale.
+            9-10=Excellent, 7-8=Good, 5-6=Acceptable, 3-4=Poor, 1-2=Failing, 0=No claims.
         overall_confidence: Overall confidence score 0-100.
         overall_verdict: One of "fully_supported", "mostly_supported",
             "partially_supported", "largely_unsupported", "no_claims".
@@ -78,8 +110,9 @@ class CheckReport:
     """
 
     answer: str
-    overall_confidence: float
-    overall_verdict: str
+    answer_score: float = 0.0
+    overall_confidence: float = 0.0
+    overall_verdict: str = "no_claims"
     claims: list[Claim] = field(default_factory=list)
     results: list[VerificationResult] = field(default_factory=list)
     summary: str = ""
@@ -90,6 +123,7 @@ class CheckReport:
         """Convert the report to a dictionary for JSON serialization."""
         return {
             "answer": self.answer,
+            "answer_score": self.answer_score,
             "overall_confidence": round(self.overall_confidence, 2),
             "overall_verdict": self.overall_verdict,
             "summary": self.summary,
@@ -112,6 +146,7 @@ class CheckReport:
                     "evidence": r.evidence,
                     "explanation": r.explanation,
                     "document_id": r.document_id,
+                    "document_index": r.document_index,
                     "chunk_id": r.chunk_id,
                     "consistency_score": r.consistency_score,
                     "evidence_span": (
@@ -134,6 +169,7 @@ class CheckReport:
                     "evidence": r.evidence,
                     "explanation": r.explanation,
                     "document_id": r.document_id,
+                    "document_index": r.document_index,
                     "chunk_id": r.chunk_id,
                     "consistency_score": r.consistency_score,
                     "evidence_span": (

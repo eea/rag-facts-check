@@ -31,7 +31,7 @@ from .prompts import (
     format_documents,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
-from .spans import find_evidence_span, find_span_in_text
+from .spans import find_evidence_span, find_evidence_span_in_doc, find_span_in_text
 
 log = logging.getLogger("rag_facts_check")
 
@@ -53,7 +53,7 @@ class ClaimExtractor:
     def __init__(
         self,
         llm: LLM,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 2048,
         extraction_agent: "AtomicAgent | None" = None,
     ):
         self.llm = llm
@@ -108,6 +108,30 @@ class ClaimExtractor:
             raw_claims = matched + refined
 
         claims = self._to_claim_objects(raw_claims)
+
+        # Deduplicate claims that map to the same span in the answer.
+        # The LLM sometimes extracts the same fact twice with different
+        # phrasing but identical original_text → same span.
+        # Only dedup claims with valid spans (span=None claims are kept).
+        seen_spans: set[tuple[int, int]] = set()
+        deduped: list[Claim] = []
+        for claim in claims:
+            if claim.span:
+                span_key = (claim.span.start, claim.span.end)
+                if span_key not in seen_spans:
+                    seen_spans.add(span_key)
+                    deduped.append(claim)
+            else:
+                deduped.append(claim)
+        if len(deduped) < len(claims):
+            log.info(
+                "extract: deduplicated %d → %d claims (removed %d overlapping spans)",
+                len(claims),
+                len(deduped),
+                len(claims) - len(deduped),
+            )
+        claims = deduped
+
         log.info("extract: %d claims extracted", len(claims))
         return claims
 
@@ -317,7 +341,16 @@ class ClaimVerifier:
             and explanation.
         """
         # Determine which documents to use
-        docs_to_verify = [c.text for c in chunks] if chunks is not None else documents
+        if chunks is not None:
+            # Pass chunks as dicts so format_documents can include titles
+            # as headers without polluting the raw text (span offsets).
+            docs_to_verify = [
+                {"text": c.text, "title": c.title}
+                for c in chunks
+                if c.title is not None
+            ] or [c.text for c in chunks]  # fallback to plain text if no titles
+        else:
+            docs_to_verify = documents
 
         # Self-consistency: run multiple times with different temperatures
         if self.num_consistency_runs > 1:
@@ -372,13 +405,24 @@ class ClaimVerifier:
         else:
             verdict = "not_enough_info"
 
+        # Clamp document_index to valid range
+        doc_index = result.document_index
+        if doc_index is not None and (doc_index < 0 or doc_index >= len(documents)):
+            log.debug(
+                "verify: document_index %d out of range (%d docs), ignoring",
+                doc_index,
+                len(documents),
+            )
+            doc_index = None
+
         return VerificationResult(
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=result.confidence,
+            confidence=0,
             evidence=result.evidence or "N/A",
             explanation=result.explanation or "",
+            document_index=doc_index,
         )
 
     def _aggregate_consistency(
@@ -390,15 +434,13 @@ class ClaimVerifier:
         """Aggregate multiple verification results using majority vote.
 
         - Verdict: majority vote
-        - Confidence: average of per-run confidences
+        - Confidence: consistency score as percentage (how many runs agreed)
         - Evidence: from the result with the majority verdict
         - Consistency score: fraction of runs that agree with the majority
         """
         verdicts = [r.verdict for r in results]
         verdict_counts = Counter(verdicts)
         majority_verdict, majority_count = verdict_counts.most_common(1)[0]
-
-        avg_confidence = int(sum(r.confidence for r in results) / len(results))
 
         # Use evidence from the first result with the majority verdict
         majority_result = next((r for r in results if r.verdict == majority_verdict), results[0])
@@ -422,10 +464,11 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=majority_verdict,
-            confidence=avg_confidence,
+            confidence=int(consistency_score * 100),
             evidence=majority_result.evidence,
             explanation=majority_result.explanation,
             document_id=doc_id,
+            document_index=majority_result.document_index,
             chunk_id=chunk_id,
             consistency_score=consistency_score,
         )
@@ -467,23 +510,26 @@ class ClaimVerifier:
         else:
             verdict = "not_enough_info"
 
-        confidence = min(100, max(0, int(data.get("confidence", 50))))
         evidence = data.get("evidence", "N/A") or "N/A"
         explanation = data.get("explanation", "") or ""
+
+        # Parse document_index (0-based)
+        doc_index_raw = data.get("document_index")
+        doc_index = int(doc_index_raw) if doc_index_raw is not None else None
 
         return VerificationResult(
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=confidence,
+            confidence=0,
             evidence=evidence,
             explanation=explanation,
+            document_index=doc_index,
         )
 
     def _parse_text_result(self, claim: Claim, response: str) -> VerificationResult:
         """Parse legacy VERDICT:/CONFIDENCE: text format."""
         verdict = "not_enough_info"
-        confidence = 50
         evidence = "N/A"
         explanation = ""
 
@@ -498,10 +544,6 @@ class ClaimVerifier:
                 verdict = "not_enough_info"
             elif "SUPPORTED" in raw_verdict:
                 verdict = "supported"
-
-        conf_match = re.search(r"CONFIDENCE:\s*(\d+)", response, re.IGNORECASE)
-        if conf_match:
-            confidence = min(100, max(0, int(conf_match.group(1))))
 
         evidence_match = re.search(
             r"EVIDENCE:\s*(.+?)(?:\n\n|\nEXPLANATION|\nVERDICT|\Z)",
@@ -523,7 +565,7 @@ class ClaimVerifier:
             claim=claim.text,
             claim_index=claim.index,
             verdict=verdict,
-            confidence=confidence,
+            confidence=0,
             evidence=evidence,
             explanation=explanation,
         )
@@ -564,6 +606,7 @@ class RAGFactsChecker:
         llm: LLM,
         max_claims: int | None = None,
         max_new_tokens: int = 512,
+        max_extraction_tokens: int | None = None,
         max_docs_chars: int = 8000,
         max_chars_per_doc: int = 2000,
         num_consistency_runs: int = 1,
@@ -579,7 +622,9 @@ class RAGFactsChecker:
         Args:
             llm: LLM backend implementing the :class:`LLM` interface.
             max_claims: Maximum number of claims to verify (limits latency).
-            max_new_tokens: Max tokens for LLM generation.
+            max_new_tokens: Max tokens for LLM generation (verification phase).
+            max_extraction_tokens: Max tokens for claim extraction. Defaults to
+                2048 to allow thorough decomposition of compound statements.
             max_docs_chars: Maximum total characters of documents to include.
             max_chars_per_doc: Maximum characters per individual document.
             num_consistency_runs: Number of verification runs for self-consistency.
@@ -599,6 +644,7 @@ class RAGFactsChecker:
         self.llm = llm
         self.max_claims = max_claims
         self.max_new_tokens = max_new_tokens
+        self.max_extraction_tokens = max_extraction_tokens or 2048
         self.max_docs_chars = max_docs_chars
         self.max_chars_per_doc = max_chars_per_doc
         self.num_consistency_runs = num_consistency_runs
@@ -606,7 +652,7 @@ class RAGFactsChecker:
         self.use_evidence_retrieval = use_evidence_retrieval
         self.retriever = retriever or EvidenceRetriever(top_k=3)
 
-        self.extractor = ClaimExtractor(llm, max_new_tokens=max_new_tokens)
+        self.extractor = ClaimExtractor(llm, max_new_tokens=self.max_extraction_tokens)
         self.verifier = ClaimVerifier(
             llm,
             max_new_tokens=max_new_tokens,
@@ -720,14 +766,109 @@ class RAGFactsChecker:
             result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 
             # Compute evidence span in source documents
-            evidence_match = find_evidence_span(result.evidence, documents)
-            if evidence_match:
-                result.evidence_span = Span(start=evidence_match[1], end=evidence_match[2])
+            evidence_span = self._find_evidence_span(
+                result,
+                documents,
+                relevant_chunks,
+            )
+            if evidence_span:
+                result.evidence_span = evidence_span
 
             results.append(result)
 
         # Step 4: Aggregate
         return self._aggregate(answer, claims, results)
+
+    def _find_evidence_span(
+        self,
+        result: VerificationResult,
+        documents: list[str] | list[dict[str, str]],
+        relevant_chunks: list["DocumentChunk"] | None,
+    ) -> Span | None:
+        """Find the evidence span for a verification result.
+
+        Strategy:
+        1. If the LLM provided a document_index, search that document first
+        2. Fall back to searching all documents
+        3. If evidence quote doesn't match, use the top retrieved chunk's offsets
+        """
+        evidence = result.evidence
+        if not evidence or evidence == "N/A":
+            return None
+
+        # Step 1: Targeted search using document_index
+        if result.document_index is not None:
+            idx = result.document_index
+            if 0 <= idx < len(documents):
+                doc = documents[idx]
+                doc_text = doc["text"] if isinstance(doc, dict) else doc
+                span = find_evidence_span_in_doc(evidence, doc_text)
+                if span is not None:
+                    return Span(start=span[0], end=span[1])
+
+        # Step 2: Search all documents
+        all_match = find_evidence_span(evidence, documents)
+        if all_match is not None:
+            return Span(start=all_match[1], end=all_match[2])
+
+        # Evidence quote not found in any document. Return None so the
+        # segment is skipped — better than a bogus span pointing to
+        # unrelated text.
+        log.debug(
+            "_find_evidence_span: evidence quote not found for claim[%d]: %s",
+            result.claim_index,
+            evidence[:80],
+        )
+        return None
+
+    # Answer quality score constants
+    _SCORE_NEI_WEIGHT = 0.4  # not_enough_info verdict weight
+    _SCORE_CITATION_MAX_REDUCTION = 0.3  # max 30% reduction for uncited claims
+    _SCORE_CONTRADICTION_MULTIPLIER = 1.5  # contradictions drive score to zero
+
+    def _compute_answer_score(
+        self,
+        results: list[VerificationResult],
+    ) -> float:
+        """Compute a 0-10 answer quality score from verification results.
+
+        Three multiplicative factors:
+        1. Groundedness base — weighted average of verdicts scaled to 0-10
+        2. Citation penalty — reduction for claims without evidence segments
+        3. Contradiction penalty — harsh reduction for contradicted claims
+
+        Returns:
+            Score 0-10, rounded to 1 decimal place.
+        """
+        total = len(results)
+        if total == 0:
+            return 0.0
+
+        # 1. Groundedness base (0-10) — verdict-based, no LLM confidence
+        verdict_weights = {
+            "supported": 1.0,
+            "not_enough_info": self._SCORE_NEI_WEIGHT,
+            "contradicted": 0.0,
+        }
+        weighted_sum = sum(verdict_weights.get(r.verdict, 0.5) for r in results)
+        groundedness = weighted_sum / total * 10
+
+        # 2. Citation penalty (1.0 = no penalty, 0.7 = max penalty)
+        cited = sum(1 for r in results if r.evidence_span is not None)
+        citation_ratio = cited / total
+        citation_penalty = 1.0 - (
+            self._SCORE_CITATION_MAX_REDUCTION * (1 - citation_ratio)
+        )
+
+        # 3. Contradiction penalty (1.0 = no penalty, 0 = max penalty)
+        contradicted = sum(1 for r in results if r.verdict == "contradicted")
+        contradiction_penalty = max(
+            0.0, 1.0 - (self._SCORE_CONTRADICTION_MULTIPLIER * contradicted / total)
+        )
+
+        # Compose
+        raw = groundedness * citation_penalty * contradiction_penalty
+        return round(max(0.0, min(10.0, raw)), 1)
 
     def _aggregate(
         self,
@@ -741,10 +882,8 @@ class RAGFactsChecker:
         contradicted = sum(1 for r in results if r.verdict == "contradicted")
         not_enough = sum(1 for r in results if r.verdict == "not_enough_info")
 
-        # Overall confidence: weighted average of per-claim confidence
-        weighted_sum = sum(r.confidence * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
-        max_possible = sum(100 * self.VERDICT_WEIGHTS.get(r.verdict, 0.5) for r in results)
-        overall_confidence = (weighted_sum / max_possible * 100) if max_possible > 0 else 0.0
+        # Overall confidence: percentage of claims that are supported
+        overall_confidence = supported / total * 100 if total > 0 else 0.0
 
         # Overall verdict
         support_ratio = supported / total if total > 0 else 0
@@ -781,8 +920,12 @@ class RAGFactsChecker:
             total, supported, contradicted, not_enough, overall_confidence, overall_verdict
         )
 
+        # Compute answer quality score
+        answer_score = self._compute_answer_score(results)
+
         return CheckReport(
             answer=answer,
+            answer_score=answer_score,
             overall_confidence=overall_confidence,
             overall_verdict=overall_verdict,
             claims=claims,

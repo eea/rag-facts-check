@@ -33,8 +33,9 @@ class ExtractedClaim(BaseIOSchema):
     claim: str = Field(
         ...,
         description=(
-            "The atomic factual claim, rephrased for clarity if needed. "
-            "Must be a single verifiable statement."
+            "A complete factual statement with a subject and predicate "
+            "(e.g. 'X does Y', not just 'X'). Must be verifiable. "
+            "Do not extract bare names or noun phrases."
         ),
     )
     original_text: str = Field(
@@ -42,7 +43,8 @@ class ExtractedClaim(BaseIOSchema):
         description=(
             "The EXACT verbatim text fragment from the source answer that "
             "this claim is based on. Must be a substring of the original "
-            "answer text — do NOT paraphrase this field."
+            "answer text — do NOT paraphrase. Copy exact words including "
+            "punctuation and formatting markers (**, *, etc.)."
         ),
     )
 
@@ -93,17 +95,19 @@ class VerificationOutput(BaseIOSchema):
         description="One of: SUPPORTED, CONTRADICTED, NOT_ENOUGH_INFO.",
         pattern=r"^(SUPPORTED|CONTRADICTED|NOT_ENOUGH_INFO)$",
     )
-    confidence: int = Field(
-        ...,
-        description="Confidence score 0-100.",
-        ge=0,
-        le=100,
-    )
     evidence: str = Field(
         ...,
         description=(
-            "Exact quote from source documents supporting or contradicting "
-            "the claim, or 'N/A' if not enough info."
+            "A VERBATIM quote from the source documents — copy-paste exact text, "
+            "do not paraphrase. This quote will be searched for in the original "
+            "documents, so it must match word-for-word. Use 'N/A' if not enough info."
+        ),
+    )
+    document_index: int | None = Field(
+        None,
+        description=(
+            "Zero-based index of the source document containing the evidence "
+            "(0 = first document, 1 = second, etc.). Null if evidence is N/A."
         ),
     )
     explanation: str = Field(

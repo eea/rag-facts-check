@@ -25,11 +25,14 @@ flowchart LR
 
 ### 1. Claim Extraction
 
-The answer text is sent to the LLM with a claim extraction prompt. The LLM returns a structured list of atomic factual claims. Each claim is parsed into a `Claim` object with:
+The answer text is sent to the LLM with a claim extraction prompt (2048 token budget). The LLM returns a structured list of atomic factual claims. Each claim is parsed into a `Claim` object with:
 
 - `index` — position in the extracted list
 - `text` — the claim string
+- `original_text` — exact verbatim fragment from the answer (for span matching)
 - `span` — `{start, end}` character offsets in the original answer
+
+Claims with identical spans are deduplicated (the LLM sometimes extracts the same fact twice). Multi-turn refinement (up to 3 rounds) fixes claims whose `original_text` cannot be located in the answer.
 
 ### 2. Evidence Retrieval (optional)
 
@@ -39,10 +42,11 @@ If `use_evidence_retrieval=True`, the `EvidenceRetriever` splits all source docu
 
 Each claim is verified against the source documents (or retrieved chunks). For each claim:
 
-- The LLM is prompted with the claim + relevant document text
+- The LLM is prompted with the claim + relevant document text. When documents carry `title` metadata, titles appear as headers in the prompt (e.g. `Document 1: Europe's environment 2025`) without polluting the raw text (preserving span offsets).
 - If `evidence_first=True`, the prompt uses a multi-step format (extract evidence → compare → verdict → output)
 - If `num_consistency_runs > 1`, verification runs multiple times with increasing temperatures and results are aggregated via majority vote
 - Output is parsed into a `VerificationResult` with verdict, confidence, evidence, explanation, and optional `consistency_score`
+- Evidence spans are computed by searching for the LLM's verbatim evidence quote in the source documents. Zero-length or unmatched spans are skipped (no bogus highlights).
 
 ### 4. Aggregation
 

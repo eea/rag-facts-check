@@ -5,7 +5,7 @@ Covers Claim, VerificationResult, CheckReport, and the to_dict()
 serialization method.
 """
 
-from rag_facts_check.models import CheckReport, Claim, VerificationResult
+from rag_facts_check.models import CheckReport, Claim, VerificationResult, score_label
 
 
 class TestClaim:
@@ -61,6 +61,7 @@ class TestVerificationResult:
             explanation="No info.",
         )
         assert result.document_id is None
+        assert result.document_index is None
         assert result.chunk_id is None
         assert result.consistency_score is None
 
@@ -73,10 +74,12 @@ class TestVerificationResult:
             evidence="Evidence text.",
             explanation="Explanation.",
             document_id="doc_1",
+            document_index=0,
             chunk_id="0",
             consistency_score=1.0,
         )
         assert result.document_id == "doc_1"
+        assert result.document_index == 0
         assert result.chunk_id == "0"
         assert result.consistency_score == 1.0
 
@@ -267,3 +270,46 @@ class TestCheckReport:
         assert d2["overall_verdict"] == "fully_supported"
         assert d2["claims"][0]["text"] == "Test claim."
         assert d2["results"][0]["verdict"] == "supported"
+
+
+class TestScoreLabel:
+    """Tests for the score_label helper."""
+
+    def test_excellent(self):
+        assert score_label(10) == "Excellent"
+        assert score_label(9.5) == "Excellent"
+        assert score_label(9.0) == "Excellent"
+
+    def test_good(self):
+        assert score_label(8.5) == "Good"
+        assert score_label(7.0) == "Good"
+
+    def test_acceptable(self):
+        assert score_label(6.0) == "Acceptable"
+        assert score_label(5.0) == "Acceptable"
+
+    def test_poor(self):
+        assert score_label(4.0) == "Poor"
+        assert score_label(3.0) == "Poor"
+
+    def test_failing(self):
+        assert score_label(2.0) == "Failing"
+        assert score_label(1.0) == "Failing"
+        assert score_label(0.5) == "Failing"
+
+    def test_no_claims(self):
+        assert score_label(0) == "No claims"
+        assert score_label(0.0) == "No claims"
+
+
+class TestCheckReportAnswerScore:
+    """Tests for the answer_score field on CheckReport."""
+
+    def test_answer_score_default(self):
+        report = CheckReport(answer="Test")
+        assert report.answer_score == 0.0
+
+    def test_answer_score_in_to_dict(self):
+        report = CheckReport(answer="Test", answer_score=7.5)
+        d = report.to_dict()
+        assert d["answer_score"] == 7.5

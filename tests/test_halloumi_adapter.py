@@ -77,14 +77,13 @@ class TestToHalloumiFormat:
         for claim in result["claims"]:
             assert 0 <= claim["score"] <= 1
 
-    def test_score_mapped_from_confidence(self, sample_report):
+    def test_score_is_verdict_based(self, sample_report):
         sources = ["Some source text."]
         result = _to_halloumi_format(sample_report, sources)
 
-        # confidence 95 -> score 0.95
-        assert result["claims"][0]["score"] == 0.95
-        # confidence 90 -> score 0.9
-        assert result["claims"][1]["score"] == 0.9
+        # Both claims are "supported" → score 1.0 (not raw confidence)
+        assert result["claims"][0]["score"] == 1.0
+        assert result["claims"][1]["score"] == 1.0
 
     def test_segments_have_offsets(self, sample_report):
         sources = [
@@ -119,7 +118,7 @@ class TestToHalloumiFormat:
             overall_verdict="no_claims",
         )
         result = _to_halloumi_format(report, [])
-        assert result == {"claims": [], "segments": {}}
+        assert result == {"answer_score": 0.0, "claims": [], "segments": {}}
 
     def test_claim_without_span_uses_full_answer_range(self):
         """Claims without span info (LLM paraphrased) should use the full answer range."""
@@ -143,3 +142,85 @@ class TestToHalloumiFormat:
         assert len(result["claims"]) == 1
         assert result["claims"][0]["startOffset"] == 0
         assert result["claims"][0]["endOffset"] == 12  # len("Some answer.")
+
+    def test_verdict_scores_contradicted_and_nei(self):
+        """Verdict-based scores: supported=1.0, nei=0.4, contradicted=0.0."""
+        report = CheckReport(
+            answer="Some answer.",
+            overall_confidence=50.0,
+            overall_verdict="partially_supported",
+            claims=[
+                Claim(text="Claim 1.", index=1, span=Span(start=0, end=7)),
+                Claim(text="Claim 2.", index=2, span=Span(start=8, end=15)),
+                Claim(text="Claim 3.", index=3, span=Span(start=16, end=23)),
+            ],
+            results=[
+                VerificationResult(
+                    claim="Claim 1.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=90,
+                    evidence="Evidence.",
+                    explanation="Found.",
+                ),
+                VerificationResult(
+                    claim="Claim 2.",
+                    claim_index=2,
+                    verdict="not_enough_info",
+                    confidence=60,
+                    evidence="N/A",
+                    explanation="No info.",
+                ),
+                VerificationResult(
+                    claim="Claim 3.",
+                    claim_index=3,
+                    verdict="contradicted",
+                    confidence=85,
+                    evidence="Contradiction.",
+                    explanation="Wrong.",
+                ),
+            ],
+        )
+        result = _to_halloumi_format(report, ["Some source."], "Some answer.")
+        assert result["claims"][0]["score"] == 1.0  # supported
+        assert result["claims"][1]["score"] == 0.4  # not_enough_info
+        assert result["claims"][2]["score"] == 0.0  # contradicted
+
+    def test_answer_score_in_response(self, sample_report):
+        """answer_score from CheckReport appears in halloumi response."""
+        sample_report.answer_score = 7.5
+        result = _to_halloumi_format(sample_report, ["Some source text."])
+        assert result["answer_score"] == 7.5
+
+    def test_claim_without_span_is_marked_skipped(self):
+        """Claims without span (LLM paraphrased) are marked skipped=True."""
+        report = CheckReport(
+            answer="Some answer.",
+            overall_confidence=50.0,
+            overall_verdict="partially_supported",
+            claims=[
+                Claim(text="Has span.", index=1, span=Span(start=0, end=9)),
+                Claim(text="No span.", index=2, span=None),
+            ],
+            results=[
+                VerificationResult(
+                    claim="Has span.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=90,
+                    evidence="Evidence.",
+                    explanation="Found.",
+                ),
+                VerificationResult(
+                    claim="No span.",
+                    claim_index=2,
+                    verdict="not_enough_info",
+                    confidence=60,
+                    evidence="N/A",
+                    explanation="No info.",
+                ),
+            ],
+        )
+        result = _to_halloumi_format(report, ["Some source."], "Some answer.")
+        assert result["claims"][0]["skipped"] is False
+        assert result["claims"][1]["skipped"] is True

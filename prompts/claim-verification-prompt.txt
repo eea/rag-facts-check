@@ -6,4 +6,4 @@ Claim:
 Source Documents:
 {documents}
 
-Return JSON: {{"verdict": "...", "confidence": 0-100, "evidence": "...", "explanation": "..."}}
+Return JSON: {{"verdict": "...", "evidence": "verbatim quote", "document_index": 0, "explanation": "..."}}

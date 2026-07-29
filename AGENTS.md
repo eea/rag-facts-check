@@ -67,3 +67,8 @@ Install with `pip install -e ".[test,dev,server]"` or `make setup-server`.
 
 - `@pytest.mark.llm` — tests that require a live LLM. Skipped by default
   (`addopts = ["-m", "not llm"]`). Run with `pytest -m llm`.
+
+### Branch naming
+
+Use hyphens, never slashes: `feature-answer-quality-score`, not
+`feature/answer-quality-score`.

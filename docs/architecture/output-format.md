@@ -14,6 +14,7 @@ The `CheckReport` is the final output of the fact-checking pipeline.
 
 | Field | Type | Description |
 |---|---|---|
+| `answer_score` | `float (0-10)` | Overall answer quality grade — see [Answer Quality Score](/architecture/answer-quality-score.md) |
 | `overall_confidence` | `int (0-100)` | Weighted confidence score across all claims |
 | `overall_verdict` | `str` | `fully_supported`, `mostly_supported`, `partially_supported`, `largely_unsupported`, `no_claims` |
 | `dimensions` | `dict` | Multi-dimensional scores (see below) |
