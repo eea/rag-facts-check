@@ -40,7 +40,7 @@ checker = RAGFactsChecker(
 | `max_chars_per_doc` | `2000` | Per-document character limit |
 | `num_consistency_runs` | `1` | Number of self-consistency verification runs |
 | `evidence_first` | `True` | Use evidence-first multi-step prompting |
-| `use_evidence_retrieval` | `True` | Enable chunk-based evidence retrieval |
+| `use_evidence_retrieval` | `False` | Enable chunk-based evidence retrieval (disabled by default — verifier sees all documents to avoid false positives from missed chunks) |
 | `retriever` | `EvidenceRetriever()` | Custom retriever instance |
 
 ## Evidence-First Prompting

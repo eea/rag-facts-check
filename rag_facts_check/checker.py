@@ -611,7 +611,7 @@ class RAGFactsChecker:
         max_chars_per_doc: int = 2000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
-        use_evidence_retrieval: bool = True,
+        use_evidence_retrieval: bool = False,
         retriever: EvidenceRetriever | None = None,
         instructor_client=None,
         model: str = "gemma",
