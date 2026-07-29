@@ -317,7 +317,16 @@ class ClaimVerifier:
             and explanation.
         """
         # Determine which documents to use
-        docs_to_verify = [c.text for c in chunks] if chunks is not None else documents
+        if chunks is not None:
+            # Pass chunks as dicts so format_documents can include titles
+            # as headers without polluting the raw text (span offsets).
+            docs_to_verify = [
+                {"text": c.text, "title": c.title}
+                for c in chunks
+                if c.title is not None
+            ] or [c.text for c in chunks]  # fallback to plain text if no titles
+        else:
+            docs_to_verify = documents
 
         # Self-consistency: run multiple times with different temperatures
         if self.num_consistency_runs > 1:

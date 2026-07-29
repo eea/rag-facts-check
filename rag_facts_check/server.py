@@ -75,11 +75,22 @@ class CheckRequest(BaseModel):
     options: CheckOptions | None = Field(None, description="Optional pipeline overrides")
 
 
+class HalloumiSource(BaseModel):
+    """A structured source document with optional metadata."""
+
+    text: str = Field(..., description="Document text")
+    title: str | None = Field(None, description="Document title or semantic identifier")
+    source_type: str | None = Field(None, description="Source type (web, file, etc.)")
+    link: str | None = Field(None, description="Source URL")
+
+
 class HalloumiRequest(BaseModel):
     """Request body for POST /halloumi/generate (halloumi-compatible)."""
 
     answer: str = Field(..., description="RAG-generated answer to verify")
-    sources: list[str] = Field(..., description="Source document texts (plain strings)")
+    sources: list[str | HalloumiSource] = Field(
+        ..., description="Source documents as plain strings or structured dicts"
+    )
     max_context_segments: int = Field(0, description="Max context segments (unused, for compat)")
 
 
@@ -186,15 +197,35 @@ def create_app() -> FastAPI:
         """
         checker = _get_checker()
 
-        # Convert plain string sources to document dicts
-        sources = [s for s in request.sources if s.strip()]
-        documents = [{"doc_id": f"doc_{i + 1}", "text": src} for i, src in enumerate(sources)]
+        # Normalize sources: plain strings or structured dicts -> document dicts
+        documents = []
+        raw_texts: list[str] = []  # for _to_halloumi_format span mapping
+        for i, src in enumerate(request.sources):
+            if isinstance(src, str):
+                text = src.strip()
+                if not text:
+                    continue
+                documents.append({"doc_id": f"doc_{i + 1}", "text": text})
+                raw_texts.append(text)
+            else:
+                # Structured HalloumiSource
+                text = src.text.strip() if src.text else ""
+                if not text:
+                    continue
+                doc: dict[str, str | None] = {
+                    "doc_id": f"doc_{i + 1}",
+                    "text": text,
+                }
+                if src.title:
+                    doc["title"] = src.title
+                documents.append(doc)
+                raw_texts.append(text)
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
             len(request.answer),
             len(request.sources),
-            len(sources),
+            len(documents),
         )
 
         try:
@@ -218,7 +249,7 @@ def create_app() -> FastAPI:
                     r.confidence,
                     r.evidence_span,
                 )
-            return _to_halloumi_format(report, sources, request.answer)
+            return _to_halloumi_format(report, raw_texts, request.answer)
         except Exception as e:
             log.exception("halloumi/generate error")
             raise HTTPException(status_code=500, detail=str(e)) from e

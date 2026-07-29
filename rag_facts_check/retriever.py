@@ -18,12 +18,14 @@ class DocumentChunk:
     """A chunk of a source document.
 
     Attributes:
-        text: The chunk text.
+        text: The chunk text (raw, no title prefix — title is carried
+            separately so span offsets remain accurate).
         doc_id: Identifier of the source document.
         doc_index: 0-based index of the source document in the original list.
         chunk_id: Identifier of the chunk within the document.
         start: Start character offset within the original document text.
         end: End character offset within the original document text.
+        title: Document title (for LLM context, not mixed into text).
     """
 
     text: str
@@ -32,6 +34,7 @@ class DocumentChunk:
     chunk_id: int = 0
     start: int = 0
     end: int = 0
+    title: str | None = None
 
 
 class EvidenceRetriever:
@@ -210,14 +213,11 @@ class EvidenceRetriever:
             text: Document text.
             doc_id: Document identifier.
             doc_index: 0-based index of this document in the original list.
-            title: Document title (prepended to each chunk for context).
+            title: Document title (stored separately, not mixed into text).
         """
         # Guard against empty text
         if not text.strip():
             return []
-
-        # Build the title prefix
-        title_prefix = f"Title: {title}. " if title else ""
 
         # Split into sentences first
         sentences = re.split(r"(?<=[.!?])\s+", text.strip())
@@ -236,12 +236,13 @@ class EvidenceRetriever:
                 end = start + len(chunk_text) if start >= 0 else 0
                 chunks.append(
                     DocumentChunk(
-                        text=title_prefix + chunk_text,
+                        text=chunk_text,
                         doc_id=doc_id,
                         doc_index=doc_index,
                         chunk_id=chunk_id,
                         start=start if start >= 0 else 0,
                         end=end,
+                        title=title,
                     )
                 )
                 chunk_id += 1
@@ -257,12 +258,13 @@ class EvidenceRetriever:
             end = start + len(chunk_text) if start >= 0 else 0
             chunks.append(
                 DocumentChunk(
-                    text=title_prefix + chunk_text,
+                    text=chunk_text,
                     doc_id=doc_id,
                     doc_index=doc_index,
                     chunk_id=chunk_id,
                     start=start if start >= 0 else 0,
                     end=end,
+                    title=title,
                 )
             )
 
