@@ -12,19 +12,23 @@ A modular system for verifying RAG-generated answers against their source docume
 ## Quick Start
 
 ```python
+import asyncio
 from rag_facts_check import RAGFactsChecker, MockLLM
 
-llm = MockLLM()
-checker = RAGFactsChecker(llm)
+async def main():
+    llm = MockLLM()
+    checker = RAGFactsChecker(llm)
 
-answer = "Paris is the capital of France. The Eiffel Tower was built in 1889."
-documents = [
-    "Paris is the capital of France. It is known for the Eiffel Tower.",
-    "The Eiffel Tower was constructed between 1887 and 1889.",
-]
+    answer = "Paris is the capital of France. The Eiffel Tower was built in 1889."
+    documents = [
+        "Paris is the capital of France. It is known for the Eiffel Tower.",
+        "The Eiffel Tower was constructed between 1887 and 1889.",
+    ]
 
-report = checker.check(answer, documents)
-print(report.to_dict())
+    report = await checker.check(answer, documents)
+    print(report.to_dict())
+
+asyncio.run(main())
 ```
 
 ## Documentation
@@ -42,9 +46,13 @@ Full documentation is in [`docs/`](docs/index.md):
 ## Requirements
 
 - Python 3.10+
-- `torch`, `transformers` (for HuggingFaceLLM)
-- `requests` (for APILLM)
-- `fastapi`, `uvicorn`, `httpx`, `python-dotenv` (for the web service — `pip install rag-facts-check[server]`)
+
+No core dependencies beyond the standard library and `requests`. Install optional groups as needed:
+
+```bash
+pip install -e ".[test,dev]"       # pytest, ruff
+pip install -e ".[test,dev,server]" # + fastapi, uvicorn, atomic-agents, instructor
+```
 
 ## License
 
