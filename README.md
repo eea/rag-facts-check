@@ -11,25 +11,18 @@ A modular system for verifying RAG-generated answers against their source docume
 
 ## Quick Start
 
-```python
-import asyncio
-from rag_facts_check import RAGFactsChecker, MockLLM
+The primary entry point is the FastAPI web service. It accepts RAG answers and source documents, extracts claims, verifies each against the sources, and returns a detailed report.
 
-async def main():
-    llm = MockLLM()
-    checker = RAGFactsChecker(llm)
+```bash
+# Development (auto-reload)
+make serve
 
-    answer = "Paris is the capital of France. The Eiffel Tower was built in 1889."
-    documents = [
-        "Paris is the capital of France. It is known for the Eiffel Tower.",
-        "The Eiffel Tower was constructed between 1887 and 1889.",
-    ]
-
-    report = await checker.check(answer, documents)
-    print(report.to_dict())
-
-asyncio.run(main())
+# Production
+docker build -t rag-fact-check .
+docker run -p 8000:8000 rag-fact-check
 ```
+
+See [Web Service](docs/guides/web-service.md) for endpoint details and request/response schemas.
 
 ## Documentation
 
