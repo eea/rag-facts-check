@@ -191,10 +191,21 @@ different text suffers.
 
 ### 3. Duplicate sources from frontend
 
-**Problem:** Frontend sometimes sends 40+ identical sources (same document
-repeated). Wastes context window, confuses `_find_source_index`.
+**Problem:** HAR analysis shows 1-3 unique documents out of 50-205 sources,
+with the rest being exact duplicates. E.g. europe-6.har: 24 copies of the
+same 12 KB document, 1 copy of a 7 KB document, 25 empty strings.
 
-**Options:** deduplicate on backend, fix frontend to send unique sources.
+**Root cause:** Frontend builds sources array from streaming packets without
+deduplication. Same document appears in multiple packets (MESSAGE_START,
+SEARCH_TOOL_DELTA, etc.) and gets added each time.
+
+**Impact:** Wastes context window, confuses `_find_source_index` (picks first
+match which may be wrong), inflates source counts in UI.
+
+**Fix needed:** Deduplicate sources in frontend before sending to fact-checker.
+Must preserve order and keep the first occurrence. Critical: texts must remain
+byte-identical between frontend (for span highlighting) and backend (for
+evidence span computation).
 
 ---
 
