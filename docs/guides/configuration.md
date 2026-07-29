@@ -13,14 +13,15 @@ timestamp: '2025-01-01T00:00:00Z'
 ```python
 checker = RAGFactsChecker(
     llm=llm,
-    max_claims=10,                # Limit claims for latency control
-    max_new_tokens=512,           # LLM generation length
-    max_docs_chars=8000,          # Truncate docs to fit context
-    max_chars_per_doc=2000,       # Truncate individual documents
-    num_consistency_runs=3,       # Self-consistency: run 3 times, majority vote
-    evidence_first=True,          # Use evidence-first multi-step prompting
-    use_evidence_retrieval=True,  # Retrieve relevant chunks per claim
-    retriever=EvidenceRetriever(  # Custom retriever
+    max_claims=10,                    # Limit claims for latency control
+    max_new_tokens=512,               # LLM generation length (verification)
+    max_extraction_tokens=2048,       # LLM generation length (extraction)
+    max_docs_chars=8000,              # Truncate docs to fit context
+    max_chars_per_doc=2000,           # Truncate individual documents
+    num_consistency_runs=3,           # Self-consistency: run 3 times, majority vote
+    evidence_first=True,              # Use evidence-first multi-step prompting
+    use_evidence_retrieval=True,      # Retrieve relevant chunks per claim
+    retriever=EvidenceRetriever(      # Custom retriever
         chunk_size=200,
         top_k=3,
     ),
@@ -33,12 +34,13 @@ checker = RAGFactsChecker(
 |---|---|---|
 | `llm` | *(required)* | LLM instance implementing `generate(prompt)` |
 | `max_claims` | `None` | Maximum number of claims to extract and verify |
-| `max_new_tokens` | `512` | Maximum tokens for LLM generation |
+| `max_new_tokens` | `512` | Maximum tokens for LLM generation (verification phase) |
+| `max_extraction_tokens` | `2048` | Maximum tokens for claim extraction (allows thorough decomposition) |
 | `max_docs_chars` | `8000` | Total document characters before truncation |
 | `max_chars_per_doc` | `2000` | Per-document character limit |
 | `num_consistency_runs` | `1` | Number of self-consistency verification runs |
-| `evidence_first` | `False` | Use evidence-first multi-step prompting |
-| `use_evidence_retrieval` | `False` | Enable chunk-based evidence retrieval |
+| `evidence_first` | `True` | Use evidence-first multi-step prompting |
+| `use_evidence_retrieval` | `True` | Enable chunk-based evidence retrieval |
 | `retriever` | `EvidenceRetriever()` | Custom retriever instance |
 
 ## Evidence-First Prompting
