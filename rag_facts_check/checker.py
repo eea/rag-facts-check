@@ -108,6 +108,30 @@ class ClaimExtractor:
             raw_claims = matched + refined
 
         claims = self._to_claim_objects(raw_claims)
+
+        # Deduplicate claims that map to the same span in the answer.
+        # The LLM sometimes extracts the same fact twice with different
+        # phrasing but identical original_text → same span.
+        # Only dedup claims with valid spans (span=None claims are kept).
+        seen_spans: set[tuple[int, int]] = set()
+        deduped: list[Claim] = []
+        for claim in claims:
+            if claim.span:
+                span_key = (claim.span.start, claim.span.end)
+                if span_key not in seen_spans:
+                    seen_spans.add(span_key)
+                    deduped.append(claim)
+            else:
+                deduped.append(claim)
+        if len(deduped) < len(claims):
+            log.info(
+                "extract: deduplicated %d → %d claims (removed %d overlapping spans)",
+                len(claims),
+                len(deduped),
+                len(claims) - len(deduped),
+            )
+        claims = deduped
+
         log.info("extract: %d claims extracted", len(claims))
         return claims
 
