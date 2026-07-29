@@ -53,7 +53,7 @@ class ClaimExtractor:
     def __init__(
         self,
         llm: LLM,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 2048,
         extraction_agent: "AtomicAgent | None" = None,
     ):
         self.llm = llm
@@ -582,6 +582,7 @@ class RAGFactsChecker:
         llm: LLM,
         max_claims: int | None = None,
         max_new_tokens: int = 512,
+        max_extraction_tokens: int | None = None,
         max_docs_chars: int = 8000,
         max_chars_per_doc: int = 2000,
         num_consistency_runs: int = 1,
@@ -597,7 +598,9 @@ class RAGFactsChecker:
         Args:
             llm: LLM backend implementing the :class:`LLM` interface.
             max_claims: Maximum number of claims to verify (limits latency).
-            max_new_tokens: Max tokens for LLM generation.
+            max_new_tokens: Max tokens for LLM generation (verification phase).
+            max_extraction_tokens: Max tokens for claim extraction. Defaults to
+                2048 to allow thorough decomposition of compound statements.
             max_docs_chars: Maximum total characters of documents to include.
             max_chars_per_doc: Maximum characters per individual document.
             num_consistency_runs: Number of verification runs for self-consistency.
@@ -617,6 +620,7 @@ class RAGFactsChecker:
         self.llm = llm
         self.max_claims = max_claims
         self.max_new_tokens = max_new_tokens
+        self.max_extraction_tokens = max_extraction_tokens or 2048
         self.max_docs_chars = max_docs_chars
         self.max_chars_per_doc = max_chars_per_doc
         self.num_consistency_runs = num_consistency_runs
@@ -624,7 +628,7 @@ class RAGFactsChecker:
         self.use_evidence_retrieval = use_evidence_retrieval
         self.retriever = retriever or EvidenceRetriever(top_k=3)
 
-        self.extractor = ClaimExtractor(llm, max_new_tokens=max_new_tokens)
+        self.extractor = ClaimExtractor(llm, max_new_tokens=self.max_extraction_tokens)
         self.verifier = ClaimVerifier(
             llm,
             max_new_tokens=max_new_tokens,

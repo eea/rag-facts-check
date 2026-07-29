@@ -34,7 +34,7 @@ class ExtractedClaim(BaseIOSchema):
         ...,
         description=(
             "The atomic factual claim, rephrased for clarity if needed. "
-            "Must be a single verifiable statement."
+            "Must be a single verifiable statement — not a compound of multiple facts."
         ),
     )
     original_text: str = Field(
@@ -42,7 +42,8 @@ class ExtractedClaim(BaseIOSchema):
         description=(
             "The EXACT verbatim text fragment from the source answer that "
             "this claim is based on. Must be a substring of the original "
-            "answer text — do NOT paraphrase this field."
+            "answer text — do NOT paraphrase. Copy exact words including "
+            "punctuation and formatting markers (**, *, etc.)."
         ),
     )
 
