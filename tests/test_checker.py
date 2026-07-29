@@ -317,8 +317,8 @@ class TestRAGFactsChecker:
         # Should still find it in document 0
         assert docs[0][span.start : span.end] == "with evidence"
 
-    def test_find_evidence_span_chunk_fallback(self, mock_llm):
-        """When evidence quote doesn't match, use chunk offsets as fallback."""
+    def test_find_evidence_span_not_found_returns_none(self, mock_llm):
+        """When evidence quote doesn't match, return None (no bogus span)."""
         checker = RAGFactsChecker(mock_llm)
         docs = ["Some document text that doesn't match the evidence."]
         result = VerificationResult(
@@ -341,10 +341,8 @@ class TestRAGFactsChecker:
             )
         ]
         span = checker._find_evidence_span(result, docs, chunks)
-        assert span is not None
-        # Should use chunk offsets as fallback
-        assert span.start == 0
-        assert span.end == 18
+        # Should return None when evidence quote doesn't match — no bogus fallback
+        assert span is None
 
     def test_find_evidence_span_na_evidence(self, mock_llm):
         """N/A evidence should return None."""

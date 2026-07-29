@@ -782,24 +782,19 @@ class RAGFactsChecker:
                 if span is not None:
                     return Span(start=span[0], end=span[1])
 
-        # Step 2: Search all documents (existing behavior)
+        # Step 2: Search all documents
         all_match = find_evidence_span(evidence, documents)
         if all_match is not None:
             return Span(start=all_match[1], end=all_match[2])
 
-        # Step 3: Fallback — use top retrieved chunk's offsets
-        if relevant_chunks:
-            top_chunk = relevant_chunks[0]
-            log.debug(
-                "_find_evidence_span: evidence quote not found, "
-                "using chunk fallback (doc=%s, chunk=%d, offsets=%d-%d)",
-                top_chunk.doc_id,
-                top_chunk.chunk_id,
-                top_chunk.start,
-                top_chunk.end,
-            )
-            return Span(start=top_chunk.start, end=top_chunk.end)
-
+        # Evidence quote not found in any document. Return None so the
+        # segment is skipped — better than a bogus span pointing to
+        # unrelated text.
+        log.debug(
+            "_find_evidence_span: evidence quote not found for claim[%d]: %s",
+            result.claim_index,
+            evidence[:80],
+        )
         return None
 
     # Answer quality score constants

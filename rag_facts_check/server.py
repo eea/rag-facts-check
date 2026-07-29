@@ -377,7 +377,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
         # Build segment IDs from evidence spans
         segment_ids: list[str] = []
-        if result.evidence_span and result.evidence:
+        if result.evidence_span and result.evidence_span.start != result.evidence_span.end:
             # evidence_span offsets are relative to the individual document
             # the backend searched. Map them into the joined sources string
             # by finding which source contains the evidence text.
@@ -397,13 +397,22 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
                 joined_start = result.evidence_span.start
                 joined_end = result.evidence_span.end
 
-            seg_id = str(len(segments))
-            segments[seg_id] = {
-                "id": int(seg_id),
-                "startOffset": joined_start,
-                "endOffset": joined_end,
-            }
-            segment_ids.append(seg_id)
+            # Skip zero-length or invalid spans
+            if joined_start >= 0 and joined_end > joined_start:
+                seg_id = str(len(segments))
+                segments[seg_id] = {
+                    "id": int(seg_id),
+                    "startOffset": joined_start,
+                    "endOffset": joined_end,
+                }
+                segment_ids.append(seg_id)
+            else:
+                log.debug(
+                    "_to_halloumi: skipping invalid span %s-%s for claim[%d]",
+                    joined_start,
+                    joined_end,
+                    result.claim_index,
+                )
 
         # Verdict-based score (not raw LLM confidence)
         score = verdict_scores.get(result.verdict, 0.4)
