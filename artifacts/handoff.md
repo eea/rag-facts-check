@@ -1,39 +1,38 @@
 # RAG Facts Check — Handoff Document
 
-**Date:** 2026-07-27
+**Date:** 2026-07-26
 **Status:** Active development, integrated with volto-eea-chatbot frontend
-**Branch:** `main` on github.com:tiberiuichim/rag-facts-check
+**Repo:** github.com:eea/rag-facts-check (transferring from tiberiuichim)
+**Branch:** `main`
 
 ---
 
 ## What This Is
 
-A modular Python service that verifies RAG-generated answers against source
-documents. It extracts factual claims from an answer, verifies each claim
-against provided documents, and returns a structured report with per-claim
-verdicts, confidence scores, evidence quotes, and character-level spans for
-UI highlighting.
+A standalone FastAPI service for verifying RAG-generated answers against source
+documents. Deployed at EEA to power the climate-adapt chatbot quality checks.
 
-Used by the **climate-adapt chatbot** (volto-eea-chatbot frontend) via a
-halloumi-compatible HTTP endpoint.
+Extracts factual claims from an answer, verifies each against provided documents,
+returns a structured report with per-claim verdicts, categorical scores, evidence
+quotes, and character-level spans for UI highlighting.
 
 ---
 
 ## Architecture
 
 ```
-prompts/                    # Plain-text prompt templates (edit directly, no rebuild)
+prompts/                    # Plain-text prompt templates (edit directly)
 rag_facts_check/
 ├── __init__.py             # Package exports
 ├── models.py               # Claim, VerificationResult, CheckReport, Span
-├── llm.py                  # LLM interface + adapters (HF, API, AsyncAPI)
-├── prompts.py              # Loads prompts/ files, formats them with variables
-├── retriever.py            # Chunk-based lexical evidence retrieval
+├── llm.py                  # LLM interface + adapters (AsyncAPILLM is primary)
+├── prompts.py              # Loads prompts/ files, format_documents() with title support
+├── retriever.py            # Chunk-based lexical evidence retrieval (DocumentChunk has title)
 ├── spans.py                # Span matching (claim→answer, evidence→document)
 ├── checker.py              # Core pipeline: Extract → Verify → Aggregate
 ├── agents.py               # Pydantic schemas for structured LLM I/O (atomic-agents)
 └── server.py               # FastAPI service (POST /check, POST /halloumi/generate)
-tests/                      # pytest suite (132 tests, all passing)
+tests/                      # pytest suite (162 tests, all passing)
 mock_datasets/              # Synthetic test datasets (JSON)
 docs/                       # OKF-format documentation
 ```
@@ -41,35 +40,36 @@ docs/                       # OKF-format documentation
 ### Pipeline
 
 ```
-Answer → ClaimExtractor → [Claim(text, original_text, span)]
-                              │
+Answer → ClaimExtractor (2048 tokens) → [Claim(text, original_text, span)]
+                              │                         (deduped by span)
                          EvidenceRetriever (optional, chunk-based)
                               │
                          ClaimVerifier → [VerificationResult]
-                              │
+                              │              (evidence spans mapped to joined sources)
                          Aggregator → CheckReport
                               │
-                         _to_halloumi_format → {claims, segments}
+                         _to_halloumi_format → {answer_score, claims, segments}
 ```
 
 ### Key Design Decisions
 
 - **Greenfield project** — no backward compatibility required (see AGENTS.md).
-- **Async checker** — `check()`, `extract()`, `verify()` are `async def` because
-  the server uses `AsyncAPILLM` (httpx). Tests use pytest-asyncio.
-- **Prompts as data files** — all LLM prompts live in `prompts/*.txt`, loaded at
-  runtime. Edit directly, restart server.
-- **Structured JSON output** — prompts ask the LLM to return JSON. Parser handles
-  both JSON and legacy text format (VERDICT:/CONFIDENCE:).
-- **Multi-turn claim extraction** — claims include `original_text` (verbatim
-  fragment from answer) for reliable span matching. If original_text can't be
-  found, sends problematic claims back to LLM for refinement (up to 3 rounds).
+- **Server-first** — primary consumer is the EEA chatbot frontend via HTTP.
+- **Async checker** — `check()`, `extract()`, `verify()` are `async def`.
+- **Prompts as data files** — all LLM prompts in `prompts/*.txt`, loaded at runtime.
+- **Structured sources** — `HalloumiSource` schema: `{text, title, source_type, link}`.
+  Titles appear as LLM prompt headers without polluting raw text (span-safe).
+- **Categorical scores** — High (1.0 = supported), Low (0.4 = not enough info),
+  Failed (0.0 = contradicted). Frontend renders these labels, not percentages.
+- **Multi-turn extraction** — claims include `original_text` (verbatim fragment).
+  If unmatchable, sent back to LLM for refinement (up to 3 rounds).
+- **Span safety** — zero-length or unmatched evidence spans are skipped (no bogus highlights).
 
 ---
 
 ## API
 
-### POST /halloumi/generate
+### POST /halloumi/generate (primary)
 
 Frontend endpoint. Drop-in replacement for halloumi middleware.
 
@@ -77,14 +77,21 @@ Frontend endpoint. Drop-in replacement for halloumi middleware.
 ```json
 {
   "answer": "Paris is the capital of France.",
-  "sources": ["Paris is the capital...", "The Eiffel Tower..."],
-  "max_context_segments": 100
+  "sources": [
+    { "text": "Paris is the capital...", "title": "Paris overview" },
+    { "text": "The Eiffel Tower...", "title": "Eiffel Tower" }
+  ],
+  "max_context_segments": 0
 }
 ```
+
+Sources accept plain strings (backward compat) or structured `HalloumiSource`
+objects with `text`, `title`, `source_type`, `link` fields.
 
 **Response:**
 ```json
 {
+  "answer_score": 7.5,
   "claims": [
     {
       "claimString": "Paris is the capital of France.",
@@ -102,12 +109,13 @@ Frontend endpoint. Drop-in replacement for halloumi middleware.
 ```
 
 Field contract with frontend (volto-eea-chatbot):
+- `answer_score` — 0-10 overall grade (Excellent/Good/Acceptable/Poor/Failing)
 - `claimString` — displayed in ClaimModal popup quote
 - `startOffset`/`endOffset` — character offsets in the answer for highlighting
 - `segmentIds` — references into `segments` for evidence quotes
-- `score` — 0-1 float (confidence/100)
+- `score` — 1.0 (High), 0.4 (Low), 0.0 (Failed)
 - `rationale` — displayed in ClaimModal rationale section
-- `segments[id].id` — numeric id for citation chip display (#0, #1, ...)
+- `segments[id].id` — numeric id for citation chip display
 
 ### POST /check
 
@@ -132,11 +140,32 @@ LLM_TEMPERATURE=0.1
 ```
 
 Checker parameters (in `RAGFactsChecker.__init__`):
-- `max_claims` — limit claims for latency control
-- `num_consistency_runs` — self-consistency (1 = single pass, 3 = majority vote)
-- `evidence_first` — multi-step evidence-first prompting
-- `use_evidence_retrieval` — chunk-based lexical retrieval per claim
-- `retriever` — custom EvidenceRetriever instance
+- `max_claims` — limit claims for latency control (default: None)
+- `max_new_tokens` — LLM tokens for verification (default: 512)
+- `max_extraction_tokens` — LLM tokens for claim extraction (default: 2048)
+- `num_consistency_runs` — self-consistency (default: 1)
+- `evidence_first` — multi-step evidence-first prompting (default: True)
+- `use_evidence_retrieval` — chunk-based lexical retrieval (default: True)
+
+---
+
+## Frontend Integration
+
+Frontend repo:
+`/home/tibi/work/eea.docker.plone-climateadapt/cca/frontend/src/addons/volto-eea-chatbot/`
+
+Key integration points:
+- `AIMessage.tsx` — builds `halloumiSource` objects from `final_documents`,
+  sends to `/_ha/generate`. Falls back to `doc.content` when tool packets
+  lack content (critical fix: prevents empty sources).
+- `useQualityMarkers.js` — calls `/_ha/generate`, passes structured sources
+  (prefers `halloumiSource` over legacy `halloumiContext` strings).
+- `ClaimModal.jsx` — displays claim quote, score label (High/Low/Failed), rationale.
+- `ClaimSegments.jsx` — evidence segments with citation chips, builds
+  `joinedSources` string from `halloumiContext` for span highlighting.
+
+Middleware proxy: `halloumi/middleware.js` forwards `/_ha/generate` to
+`RAG_FACT_CHECKER_URL/halloumi/generate`.
 
 ---
 
@@ -144,93 +173,43 @@ Checker parameters (in `RAGFactsChecker.__init__`):
 
 ### 1. LLM verdict/rationale inconsistency
 
-**Problem:** The LLM sometimes returns `verdict: SUPPORTED, confidence: 100`
-but the rationale clearly says the claim cannot be verified. Example:
+**Problem:** The LLM sometimes returns `SUPPORTED` with 100% confidence but
+the rationale says the claim cannot be verified.
 
-```
-claim: "France generated roughly 340 Mt of waste in 2022"
-verdict: SUPPORTED
-confidence: 100
-rationale: "The documents contain percentage trends but not absolute mass.
-            Cannot be converted to specific tonnage without baseline."
-```
+**Current state:** Band-aid `_normalise_result()` in checker.py scans rationale
+for uncertainty signals. Not a proper fix.
 
-**Current state:** A `_normalise_result()` function in checker.py attempts to
-detect this by scanning the rationale for uncertainty signals and flipping the
-verdict. This is a band-aid, not a proper fix.
+**Options:** verdict-before-rationale prompt, two-step verification,
+validate-and-retry, or accept and show rationale prominently.
 
-**Options discussed:**
-- Better prompt: force the LLM to decide verdict BEFORE writing rationale
-- Two-step verification: extract evidence first, then render verdict
-- Validate + retry: detect contradiction, send refinement prompt
-- Accept it: show rationale prominently so human sees the mismatch
+### 2. Evidence retrieval is lexical only
 
-**Decision needed:** Pick an approach and implement properly.
+**Problem:** Keyword overlap scoring. Semantically similar but lexically
+different text suffers.
 
-### 2. Span matching for paraphrased claims
+**Options:** embedding-based retrieval (sentence-transformers) or accept.
 
-**Problem:** The LLM rephrases claims during extraction. Even with
-`original_text` and multi-turn refinement, some claims still don't match
-the original answer text exactly.
+### 3. Duplicate sources from frontend
 
-**Current state:** Falls back to full answer range (startOffset=0,
-endOffset=len(answer)) when span matching fails. This works but means
-the UI highlights the entire answer instead of the specific claim.
+**Problem:** Frontend sometimes sends 40+ identical sources (same document
+repeated). Wastes context window, confuses `_find_source_index`.
 
-**Options:**
-- Use fuzzy matching (fuzzywuzzy, rapidfuzz) for span detection
-- Ask the LLM to return character offsets directly
-- Accept it: full-answer highlighting is imperfect but functional
-
-### 3. Evidence retrieval is lexical only
-
-**Problem:** The EvidenceRetriever uses keyword overlap scoring. For
-semantically similar but lexically different text, retrieval quality
-suffers.
-
-**Options:**
-- Add embedding-based retrieval (sentence-transformers)
-- Accept it: lexical retrieval works well enough for exact quotes
-
-### 4. No structured output enforcement
-
-**Problem:** Prompts ask for JSON but the LLM may return malformed JSON
-or the legacy text format. The parser handles both but this is fragile.
-
-**Options:**
-- Use instructor's response_model to enforce Pydantic schemas at the LLM level
-- Add JSON repair (json-repair library) for malformed responses
-- Accept it: dual-format parser works for now
+**Options:** deduplicate on backend, fix frontend to send unique sources.
 
 ---
 
-## Frontend Integration
-
-The frontend is at:
-`/home/tibi/work/eea.docker.plone-climateadapt/cca/frontend/src/addons/volto-eea-chatbot/`
-
-Key components:
-- `ClaimModal.jsx` — popup showing claim quote, score, rationale
-- `ClaimSegments.jsx` — evidence segments with citation chips
-- `Citation.jsx` — source citation rendering
-- `index.jsx` (markdown/) — spans processor that wraps claims in ClaimModal
-
-The frontend calls `POST /_ha/generate` which proxies to our
-`POST /halloumi/generate` endpoint.
-
----
-
-## Development
+## Running
 
 ```bash
-# Setup
-make setup-dev          # Creates .venv, installs all deps
+# Development (auto-bootstraps venv)
+make serve
 
-# Run server
-make serve              # uvicorn with auto-reload, --log-level info
+# Production
+docker build -t rag-fact-check .
+docker run -p 8000:8000 rag-fact-check
 
-# Test
-.venv/bin/pytest tests/ -v
+# Tests
+make test-coverage     # pytest with coverage report (69% overall)
 
 # Lint
 .venv/bin/ruff check rag_facts_check/ tests/
@@ -241,28 +220,30 @@ make serve              # uvicorn with auto-reload, --log-level info
 
 - `[test]` — pytest, pytest-cov, pytest-asyncio
 - `[dev]` — ruff
-- `[server]` — fastapi, uvicorn, httpx, python-dotenv, atomic-agents, instructor
+- `[server]` — fastapi, uvicorn, httpx, python-dotenv, atomic-agents, instructor, openai
 
 ### Prompt editing
 
-Edit files in `prompts/*.txt` directly. Restart the server. No rebuild needed.
+Edit `prompts/*.txt` directly. Restart server. No rebuild.
 
 Template variables: `{system_prompt}`, `{text}`, `{claim}`, `{documents}`.
 
 ---
 
-## Recent Changes (git log)
+## Recent Changes
 
-| Commit | Description |
-|--------|-------------|
-| c75ce3c | Include id field in segments for citation chip display |
-| 6abc232 | Include claimString in halloumi response for frontend display |
-| 3b89cb8 | Note greenfield project in AGENTS.md |
-| 0881977 | Structured claim extraction with multi-turn refinement |
-| de50fc6 | Extract LLM prompts into prompts/ folder |
-| 223f763 | Include claims without spans + verbose server logging |
-| 1e0543c | Make checker pipeline async to support AsyncAPILLM |
-| 1d2a25a | Refactor docs to OKF format |
+| Date | Change |
+|------|--------|
+| 2026-07-26 | Docs reorganised: server-first narrative, OKF changelog |
+| 2026-07-26 | MIT License (European Environment Agency) |
+| 2026-07-26 | README: server-first, Dockerfile for production |
+| 2026-07-26 | `make serve` auto-bootstraps venv |
+| 2026-07-25 | Structured sources with document titles in prompts |
+| 2026-07-25 | Span offset fix: map to joined sources string |
+| 2026-07-25 | Claim extraction: 2048 tokens, dedup by span, complete statements |
+| 2026-07-25 | Zero-length evidence spans skipped |
+| 2026-07-25 | Categorical scores: High/Low/Failed |
+| 2026-07-25 | Frontend fix: use doc.content from final_documents |
 
 ---
 
