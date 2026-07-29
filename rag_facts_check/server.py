@@ -288,6 +288,27 @@ app = create_app()
 # ---------------------------------------------------------------------------
 
 
+def _find_source_index(evidence: str, sources: list[str]) -> int | None:
+    """Find which source document contains the evidence text.
+
+    Searches each source for the evidence string (case-insensitive,
+    with whitespace normalization). Returns the source index or None.
+    """
+    if not evidence:
+        return None
+
+    # Normalize evidence for matching: collapse whitespace, strip
+    normalized = " ".join(evidence.split()).lower()
+    if len(normalized) < 10:
+        return None  # too short to match reliably
+
+    for i, source in enumerate(sources):
+        source_normalized = " ".join(source.split()).lower()
+        if normalized in source_normalized:
+            return i
+    return None
+
+
 def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
@@ -329,7 +350,7 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
     offset = 0
     for src in sources:
         source_offsets.append(offset)
-        offset += len(src) + 1  # +1 for the newline
+        offset += len(src)
 
     segments: dict[str, dict[str, int]] = {}
     claims: list[dict] = []
@@ -356,12 +377,31 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
         # Build segment IDs from evidence spans
         segment_ids: list[str] = []
-        if result.evidence_span:
+        if result.evidence_span and result.evidence:
+            # evidence_span offsets are relative to the individual document
+            # the backend searched. Map them into the joined sources string
+            # by finding which source contains the evidence text.
+            evidence_text = result.evidence.strip().strip('"')
+            source_idx = _find_source_index(evidence_text, sources)
+
+            if source_idx is not None:
+                joined_start = source_offsets[source_idx] + result.evidence_span.start
+                joined_end = source_offsets[source_idx] + result.evidence_span.end
+            else:
+                # Fallback: use raw offsets (may be wrong)
+                log.debug(
+                    "_to_halloumi: evidence not found in sources, using raw span %s-%s",
+                    result.evidence_span.start,
+                    result.evidence_span.end,
+                )
+                joined_start = result.evidence_span.start
+                joined_end = result.evidence_span.end
+
             seg_id = str(len(segments))
             segments[seg_id] = {
                 "id": int(seg_id),
-                "startOffset": result.evidence_span.start,
-                "endOffset": result.evidence_span.end,
+                "startOffset": joined_start,
+                "endOffset": joined_end,
             }
             segment_ids.append(seg_id)
 
