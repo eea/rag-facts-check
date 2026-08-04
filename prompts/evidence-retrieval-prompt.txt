@@ -1,0 +1,9 @@
+{system_prompt}
+
+Claim to verify:
+{claim}
+
+Document Chunks:
+{chunks}
+
+Return ONLY a JSON array of relevant chunk IDs, e.g.: [0, 3, 7]

@@ -5,6 +5,7 @@ These mocks return predefined responses based on keywords in the prompt,
 allowing the full fact-checking pipeline to be tested without a real LLM.
 """
 
+import json
 import re
 
 from rag_facts_check.llm import LLM
@@ -39,7 +40,9 @@ class MockLLM(LLM):
         self.call_count += 1
         lower = prompt.lower()
 
-        if "extract all factual claims" in lower or "extract claims from the following" in lower:
+        if "evidence retrieval" in lower or "chunk" in lower and "relevant chunk" in lower:
+            return self._mock_retrieval_response(prompt)
+        elif "extract all factual claims" in lower or "extract claims from the following" in lower:
             return self._mock_claims_response(prompt)
         elif (
             "verify whether a claim is supported" in lower or "verify the following claim" in lower
@@ -47,6 +50,38 @@ class MockLLM(LLM):
             return self._mock_verification_response(prompt)
         else:
             return "Mock response for: " + prompt[:100]
+
+    def _mock_retrieval_response(self, prompt: str) -> str:
+        """Mock evidence retrieval: find chunks that share keywords with the claim."""
+        # Extract the claim from the prompt
+        claim_match = re.search(r"Claim to verify:\s*\n(.+?)\n\nDocument Chunks:", prompt, re.DOTALL)
+        claim = claim_match.group(1).strip() if claim_match else ""
+
+        # Extract chunk IDs from the prompt
+        chunk_ids = [int(m) for m in re.findall(r"Chunk (\d+)", prompt)]
+
+        # Find chunks whose text shares keywords with the claim
+        claim_words = set(claim.lower().split())
+        stop = {"the", "a", "an", "is", "are", "was", "were", "in", "on", "at", "to", "for"}
+        claim_words -= stop
+
+        relevant = []
+        for i, chunk_id in enumerate(chunk_ids):
+            # Extract chunk text from the prompt
+            chunk_pattern = rf"Chunk {chunk_id}.*?:\s*\n(.*?)(?=\n\nChunk \d|\n\nReturn ONLY|$)"
+            chunk_match = re.search(chunk_pattern, prompt, re.DOTALL)
+            if chunk_match:
+                chunk_text = chunk_match.group(1).strip().lower()
+                chunk_words = set(chunk_text.split())
+                overlap = claim_words & chunk_words
+                if overlap:
+                    relevant.append(chunk_id)
+
+        # If no keyword overlap found, return first chunk as fallback
+        if not relevant and chunk_ids:
+            relevant = [chunk_ids[0]]
+
+        return json.dumps(relevant)
 
     def _mock_claims_response(self, prompt: str) -> str:
         """Mock claim extraction: split text into sentences and treat each as a claim."""

@@ -41,6 +41,40 @@ def format_claim_extraction_prompt(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Evidence Retrieval (LLM-based)
+# ---------------------------------------------------------------------------
+
+EVIDENCE_RETRIEVAL_SYSTEM = _load("evidence-retrieval-system.txt")
+EVIDENCE_RETRIEVAL_PROMPT = _load("evidence-retrieval-prompt.txt")
+
+
+def format_evidence_retrieval_prompt(
+    claim: str,
+    chunks: list[dict],
+) -> str:
+    """Build the LLM-based evidence retrieval prompt.
+
+    Args:
+        claim: The claim text to find evidence for.
+        chunks: List of chunk dicts with ``{"id": int, "title": str, "text": str}``.
+
+    Returns:
+        Formatted prompt string.
+    """
+    chunk_lines = []
+    for c in chunks:
+        title_part = f" — {c['title']}" if c.get("title") else ""
+        chunk_lines.append(f"Chunk {c['id']}{title_part}:\n{c['text']}")
+    chunks_text = "\n\n".join(chunk_lines)
+
+    return EVIDENCE_RETRIEVAL_PROMPT.format(
+        system_prompt=EVIDENCE_RETRIEVAL_SYSTEM,
+        claim=claim,
+        chunks=chunks_text,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Claim Verification — Standard
 # ---------------------------------------------------------------------------
 
@@ -109,8 +143,8 @@ def format_claim_verification_evidence_first_prompt(
 
 def format_documents(
     documents: list[str] | list[dict[str, str]],
-    max_chars_per_doc: int = 2000,
-    max_total_chars: int = 8000,
+    max_chars_per_doc: int = 10000,
+    max_total_chars: int = 100000,
 ) -> str:
     """Format a list of documents into a single string for the LLM.
 

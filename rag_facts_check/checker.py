@@ -294,8 +294,8 @@ class ClaimVerifier:
         self,
         llm: LLM,
         max_new_tokens: int = 512,
-        max_docs_chars: int = 8000,
-        max_chars_per_doc: int = 2000,
+        max_docs_chars: int = 100000,
+        max_chars_per_doc: int = 10000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
         verification_agent: "AtomicAgent | None" = None,
@@ -607,11 +607,11 @@ class RAGFactsChecker:
         max_claims: int | None = None,
         max_new_tokens: int = 512,
         max_extraction_tokens: int | None = None,
-        max_docs_chars: int = 8000,
-        max_chars_per_doc: int = 2000,
+        max_docs_chars: int = 100000,
+        max_chars_per_doc: int = 10000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
-        use_evidence_retrieval: bool = False,
+        use_evidence_retrieval: bool = True,
         retriever: EvidenceRetriever | None = None,
         instructor_client=None,
         model: str = "gemma",
@@ -650,7 +650,15 @@ class RAGFactsChecker:
         self.num_consistency_runs = num_consistency_runs
         self.evidence_first = evidence_first
         self.use_evidence_retrieval = use_evidence_retrieval
-        self.retriever = retriever or EvidenceRetriever(top_k=3)
+        if retriever is not None:
+            self.retriever = retriever
+        elif use_evidence_retrieval:
+            # Default: LLM-based retrieval for semantic relevance judgment
+            from .retriever import LLMEvidenceRetriever
+
+            self.retriever = LLMEvidenceRetriever(llm=llm)
+        else:
+            self.retriever = EvidenceRetriever(top_k=3)
 
         self.extractor = ClaimExtractor(llm, max_new_tokens=self.max_extraction_tokens)
         self.verifier = ClaimVerifier(
@@ -761,7 +769,14 @@ class RAGFactsChecker:
             # Retrieve relevant chunks for this claim
             relevant_chunks = None
             if chunks is not None:
-                relevant_chunks = self.retriever.retrieve(claim.text, chunks)
+                retrieved = self.retriever.retrieve(claim.text, chunks)
+                # LLMEvidenceRetriever.retrieve() is async; keyword-based is sync
+                import asyncio
+
+                if asyncio.iscoroutine(retrieved):
+                    relevant_chunks = await retrieved
+                else:
+                    relevant_chunks = retrieved
 
             result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 
