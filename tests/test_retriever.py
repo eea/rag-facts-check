@@ -248,7 +248,7 @@ class TestLLMEvidenceRetriever:
         assert isinstance(result, list)
         assert all(isinstance(c, DocumentChunk) for c in result)
         # The LLM should have been called
-        assert mock_llm.call_count >= 1
+        assert mock_llm.generate.called
 
     @pytest.mark.asyncio
     async def test_retrieve_empty_chunks(self, mock_llm):
@@ -256,7 +256,7 @@ class TestLLMEvidenceRetriever:
         result = await retriever.retrieve("some claim", [])
         assert result == []
         # LLM should NOT be called for empty chunks
-        assert mock_llm.call_count == 0
+        assert not mock_llm.generate.called
 
     @pytest.mark.asyncio
     async def test_retrieve_respects_top_k(self, mock_llm):

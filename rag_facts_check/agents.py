@@ -78,13 +78,20 @@ class ClaimExtractionOutput(BaseIOSchema):
 
 
 class VerificationInput(BaseIOSchema):
-    """Input for the claim verification agent."""
+    """Input for the claim verification agent.
 
-    claim: str = Field(..., description="The factual claim to verify.")
+    Note: ``documents`` is declared before ``claim`` so that Pydantic's
+    ``model_dump_json()`` serializes the large static documents block first.
+    This maximizes KV cache reuse in llama.cpp when verifying multiple claims
+    against the same document set — the cached prefix covers everything up to
+    the per-claim variation.
+    """
+
     documents: str = Field(
         ...,
         description="Source documents formatted as text, for evidence lookup.",
     )
+    claim: str = Field(..., description="The factual claim to verify.")
 
 
 class VerificationOutput(BaseIOSchema):
