@@ -930,9 +930,11 @@ class RAGFactsChecker:
         if self.max_claims is not None:
             claims = claims[: self.max_claims]
 
-        # Step 2: Pre-chunk documents for evidence retrieval
+        # Step 2: Pre-chunk documents for evidence retrieval.
+        # Skipped in batch mode — batch verification sends all documents
+        # directly and does not use per-claim chunk narrowing.
         chunks = None
-        if self.use_evidence_retrieval and documents:
+        if self.verifier.batch_size < 2 and self.use_evidence_retrieval and documents:
             chunks = self.retriever.chunk_documents(documents)
 
         # When evidence retrieval is disabled, pass original documents
@@ -955,14 +957,7 @@ class RAGFactsChecker:
                 # Retrieve relevant chunks for this claim
                 relevant_chunks = None
                 if chunks is not None:
-                    retrieved = self.retriever.retrieve(claim.text, chunks)
-                    # LLMEvidenceRetriever.retrieve() is async; keyword-based is sync
-                    import asyncio
-
-                    if asyncio.iscoroutine(retrieved):
-                        relevant_chunks = await retrieved
-                    else:
-                        relevant_chunks = retrieved
+                    relevant_chunks = await self.retriever.retrieve(claim.text, chunks)
 
                 result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 

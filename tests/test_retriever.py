@@ -118,7 +118,7 @@ class TestEvidenceRetriever:
             word_count = len(chunk.text.split())
             assert word_count <= 15  # Allow some slack for sentence boundaries
 
-    def test_retrieve_relevant_chunks(self):
+    async def test_retrieve_relevant_chunks(self):
         retriever = EvidenceRetriever(chunk_size=200, top_k=3)
         documents = [
             "Paris is the capital of France. The Eiffel Tower was built in 1889.",
@@ -126,12 +126,12 @@ class TestEvidenceRetriever:
             "London is the capital of England. The Thames River flows through London.",
         ]
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("What is the capital of France?", chunks)
+        relevant = await retriever.retrieve("What is the capital of France?", chunks)
         assert len(relevant) <= 3
         # The Paris chunk should be in the results
         assert any("Paris" in c.text for c in relevant)
 
-    def test_retrieve_top_k_limit(self):
+    async def test_retrieve_top_k_limit(self):
         retriever = EvidenceRetriever(chunk_size=200, top_k=1)
         documents = [
             "Paris is the capital of France. The Eiffel Tower was built in 1889.",
@@ -139,10 +139,10 @@ class TestEvidenceRetriever:
             "London is the capital of England.",
         ]
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("capital of France", chunks)
+        relevant = await retriever.retrieve("capital of France", chunks)
         assert len(relevant) <= 1
 
-    def test_retrieve_no_matching_claim(self):
+    async def test_retrieve_no_matching_claim(self):
         """When no chunks match, should return empty or fallback."""
         retriever = EvidenceRetriever(chunk_size=200, top_k=3)
         documents = [
@@ -151,14 +151,14 @@ class TestEvidenceRetriever:
         ]
         chunks = retriever.chunk_documents(documents)
         # A claim with only stop words
-        relevant = retriever.retrieve("the and of", chunks)
+        relevant = await retriever.retrieve("the and of", chunks)
         # Should return empty or fallback (claim_words is empty)
         assert isinstance(relevant, list)
 
-    def test_retrieve_empty_claim(self):
+    async def test_retrieve_empty_claim(self):
         retriever = EvidenceRetriever()
         chunks = [DocumentChunk(text="Paris is the capital.", doc_id="doc_1", chunk_id=0)]
-        relevant = retriever.retrieve("", chunks)
+        relevant = await retriever.retrieve("", chunks)
         # Empty claim → claim_words is empty → returns top_k chunks
         assert len(relevant) <= retriever.top_k
 
@@ -189,7 +189,7 @@ class TestEvidenceRetriever:
         tokens = retriever._tokenize("")
         assert tokens == set()
 
-    def test_retrieve_with_climate_claim(self):
+    async def test_retrieve_with_climate_claim(self):
         """Test retrieval with environmental claims."""
         retriever = EvidenceRetriever(chunk_size=200, top_k=2)
         documents = [
@@ -198,11 +198,11 @@ class TestEvidenceRetriever:
             "Battery storage costs have fallen by 89% since 2010.",
         ]
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("renewable energy accounted for 30%", chunks)
+        relevant = await retriever.retrieve("renewable energy accounted for 30%", chunks)
         assert len(relevant) <= 2
         assert any("30%" in c.text for c in relevant)
 
-    def test_retrieve_sorts_by_relevance(self):
+    async def test_retrieve_sorts_by_relevance(self):
         """Retrieved chunks should be sorted by relevance score."""
         retriever = EvidenceRetriever(chunk_size=200, top_k=3)
         documents = [
@@ -212,7 +212,7 @@ class TestEvidenceRetriever:
             "Paris is known for the Louvre Museum.",
         ]
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("Paris capital France Eiffel Tower", chunks)
+        relevant = await retriever.retrieve("Paris capital France Eiffel Tower", chunks)
         assert len(relevant) <= 3
         # The most relevant chunk should mention Paris and Eiffel Tower
         if relevant:
@@ -294,6 +294,21 @@ class TestLLMEvidenceRetriever:
         assert 3 in ids
         assert 7 in ids
 
+    def test_parse_chunk_ids_max_id_filters_out_of_range(self, mock_llm):
+        retriever = LLMEvidenceRetriever(llm=mock_llm)
+        # Only 3 chunks (ids 0-2), year 2023 should be filtered
+        ids = retriever._parse_chunk_ids(
+            "chunks from doc 1 about emissions in 2023 are relevant",
+            max_id=2,
+        )
+        assert 1 in ids
+        assert 2023 not in ids
+
+    def test_parse_chunk_ids_max_id_filters_json(self, mock_llm):
+        retriever = LLMEvidenceRetriever(llm=mock_llm)
+        ids = retriever._parse_chunk_ids("[0, 3, 99]", max_id=4)
+        assert ids == [0, 3]
+
     @pytest.mark.asyncio
     async def test_fallback_when_llm_returns_nothing(self, mock_llm):
         """When LLM returns empty/no valid IDs, fall back to first top_k chunks."""
@@ -303,7 +318,7 @@ class TestLLMEvidenceRetriever:
 
         # Monkey-patch _parse_chunk_ids to return empty
         original = retriever._parse_chunk_ids
-        retriever._parse_chunk_ids = lambda text: []
+        retriever._parse_chunk_ids = lambda text, **kwargs: []
 
         result = await retriever.retrieve("unrelated claim", chunks)
 

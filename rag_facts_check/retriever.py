@@ -51,7 +51,7 @@ class EvidenceRetriever:
 
         retriever = EvidenceRetriever(chunk_size=200, top_k=3)
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("Paris is the capital of France", chunks)
+        relevant = await retriever.retrieve("Paris is the capital of France", chunks)
     """
 
     def __init__(
@@ -273,7 +273,7 @@ class EvidenceRetriever:
 
         return chunks
 
-    def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
+    async def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
         """Retrieve the most relevant chunks for a claim.
 
         Uses keyword overlap (Jaccard-like similarity on non-stop-words).
@@ -392,7 +392,7 @@ class LLMEvidenceRetriever(EvidenceRetriever):
         )
 
         # Parse the LLM's response as a JSON array of chunk IDs
-        selected_ids = self._parse_chunk_ids(response)
+        selected_ids = self._parse_chunk_ids(response, max_id=len(chunks) - 1)
 
         # Map IDs back to chunks, respecting top_k
         id_to_chunk = {i: chunk for i, chunk in enumerate(chunks)}
@@ -408,18 +408,27 @@ class LLMEvidenceRetriever(EvidenceRetriever):
 
         return result
 
-    def _parse_chunk_ids(self, text: str) -> list[int]:
+    def _parse_chunk_ids(self, text: str, max_id: int | None = None) -> list[int]:
         """Parse chunk IDs from the LLM's JSON array response.
 
         Handles various formats: pure JSON, JSON in code fences,
         JSON embedded in prose, etc.
+
+        Args:
+            text: The LLM response text.
+            max_id: Maximum valid chunk ID. IDs outside 0..max_id are
+                discarded, preventing years/percentages from being
+                mistaken for chunk indices.
         """
+        def _in_range(n: int) -> bool:
+            return max_id is None or (0 <= n <= max_id)
+
         # Try direct JSON parse first
         text = text.strip()
         try:
             parsed = json.loads(text)
             if isinstance(parsed, list):
-                return [int(x) for x in parsed if isinstance(x, (int, float))]
+                return [int(x) for x in parsed if isinstance(x, (int, float)) and _in_range(int(x))]
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -428,10 +437,10 @@ class LLMEvidenceRetriever(EvidenceRetriever):
         if match:
             try:
                 parsed = json.loads(match.group())
-                return [int(x) for x in parsed if isinstance(x, (int, float))]
+                return [int(x) for x in parsed if isinstance(x, (int, float)) and _in_range(int(x))]
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Last resort: extract all integers from the text
+        # Last resort: extract all integers from the text, filtered to valid range
         numbers = re.findall(r"\b(\d+)\b", text)
-        return [int(n) for n in numbers]
+        return [int(n) for n in numbers if _in_range(int(n))]
