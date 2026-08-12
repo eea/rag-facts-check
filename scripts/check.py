@@ -103,7 +103,7 @@ def print_report(name: str, report, verbose: bool = False, elapsed: float = 0) -
 # ---------------------------------------------------------------------------
 
 
-async def run(dataset_path: str, verbose: bool = False) -> dict:
+async def run(dataset_path: str, verbose: bool = False, batch_size: int = 1) -> dict:
     data = load_dataset(dataset_path)
 
     name = Path(dataset_path).stem
@@ -124,7 +124,10 @@ async def run(dataset_path: str, verbose: bool = False) -> dict:
         print(f"LLM: {model} at {url}")
 
     llm = AsyncAPILLM(url, model_name=model, api_key=api_key, chat_mode=True)
-    checker = RAGFactsChecker(llm)
+    checker = RAGFactsChecker(llm, batch_size=batch_size)
+
+    if verbose:
+        print(f"Batch size: {batch_size}")
 
     t0 = time.time()
     report = await checker.check(answer=data["answer"], documents=data["documents"])
@@ -146,13 +149,17 @@ def main() -> None:
         "--output", "-o", type=str, default=None,
         help="Save results to a JSON file.",
     )
+    parser.add_argument(
+        "--batch-size", "-b", type=int, default=1,
+        help="Number of claims to verify in a single LLM call (default: 1).",
+    )
     args = parser.parse_args()
 
     if not Path(args.dataset).exists():
         print(f"Error: dataset not found: {args.dataset}", file=sys.stderr)
         sys.exit(1)
 
-    result = asyncio.run(run(args.dataset, verbose=args.verbose))
+    result = asyncio.run(run(args.dataset, verbose=args.verbose, batch_size=args.batch_size))
 
     if args.output:
         with open(args.output, "w") as f:

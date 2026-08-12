@@ -1,0 +1,9 @@
+{system_prompt}
+
+Source Documents:
+{documents}
+
+Claims to verify:
+{claims}
+
+Return a JSON array with one object per claim.

@@ -137,6 +137,39 @@ def format_claim_verification_evidence_first_prompt(
 
 
 # ---------------------------------------------------------------------------
+# Claim Verification — Batch
+# ---------------------------------------------------------------------------
+
+CLAIM_VERIFICATION_BATCH_SYSTEM = _load("claim-verification-batch-system.txt")
+CLAIM_VERIFICATION_BATCH_PROMPT = _load("claim-verification-batch-prompt.txt")
+
+
+def format_claim_verification_batch_prompt(
+    claims: list[tuple[int, str]],
+    documents: list[str] | list[dict[str, str]],
+) -> str:
+    """Build a batch verification prompt for multiple claims.
+
+    Args:
+        claims: List of (claim_index, claim_text) tuples.
+        documents: List of source document strings or dicts.
+
+    Returns:
+        Formatted prompt string.
+    """
+    formatted_docs = format_documents(documents)
+    claims_text = "\n".join(
+        f"  Claim {idx}: {text}"
+        for idx, text in claims
+    )
+    return CLAIM_VERIFICATION_BATCH_PROMPT.format(
+        system_prompt=CLAIM_VERIFICATION_BATCH_SYSTEM,
+        documents=formatted_docs,
+        claims=claims_text,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Document Formatting
 # ---------------------------------------------------------------------------
 
