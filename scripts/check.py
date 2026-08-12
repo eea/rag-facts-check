@@ -79,24 +79,23 @@ def print_report(name: str, report, verbose: bool = False, elapsed: float = 0) -
 
     print(f"\nPer-claim results:")
     for r in d["results"]:
-        claim_preview = r["claim"][:70] + "..." if len(r["claim"]) > 70 else r["claim"]
-        verdict = r["verdict"].upper()
-        print(f"  [{r['claim_index']:>2}] {verdict:15} | {claim_preview}")
+        claim = r["claim"]
+        print(f"  [{r['claim_index']:>2}] {r['verdict'].upper():15} | {claim}")
 
     if d["hallucination_flags"]:
         print(f"\nHallucination flags ({len(d['hallucination_flags'])}):")
         for f_item in d["hallucination_flags"]:
-            claim_preview = f_item["claim"][:65] + "..." if len(f_item["claim"]) > 65 else f_item["claim"]
-            print(f"  [!] [{f_item['claim_index']}] {claim_preview}")
+            claim = f_item["claim"]
+            print(f"  [!] [{f_item['claim_index']}] {claim}")
 
     if verbose:
         print(f"\nDetailed evidence:")
         for r in d["results"]:
-            print(f"\n  Claim {r['claim_index']}: {r['claim'][:80]}")
+            print(f"\n  Claim {r['claim_index']}: {r['claim']}")
             print(f"  Verdict:    {r['verdict']}")
-            print(f"  Evidence:   {r['evidence'][:150]}")
+            print(f"  Evidence:   {r['evidence']}")
             if r.get("explanation"):
-                print(f"  Explanation: {r['explanation'][:200]}")
+                print(f"  Explanation: {r['explanation']}")
 
 
 # ---------------------------------------------------------------------------
