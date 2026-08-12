@@ -43,17 +43,6 @@ htmlcov/
 mock_datasets/*_generated.jsonl
 mock_datasets/all_*.jsonl
 
-# Test artifacts (HAR files, ad-hoc scripts, debug data, POCs)
-artifacts/*.har
-artifacts/debug-data/
-artifacts/discovery/
-artifacts/triplet-poc/
-artifacts/RAGFactChecker/
-artifacts/*.json
-artifacts/*.jsonl
-artifacts/discovery.md
-artifacts/original-halloumi-pipeline.md
-artifacts/plan-fix-source-selection.md
-artifacts/rag-claim-check.md
-artifacts/trace-hallucinations.md
+# Artifacts (debug data, HAR files, POCs, discovery notes)
+artifacts/
 test2.*
