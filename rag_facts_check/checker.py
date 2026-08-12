@@ -369,7 +369,18 @@ class ClaimVerifier:
                 results.append(result)
             return self._aggregate_consistency(claim, chunks, results)
         else:
-            return await self._single_verify(claim, docs_to_verify, temperature=0.1)
+            result = await self._single_verify(claim, docs_to_verify, temperature=0.1)
+            # Extract document_id from chunks when available
+            if chunks and result.evidence and result.evidence != "N/A":
+                for chunk in chunks:
+                    if (
+                        result.evidence.strip('"').strip() in chunk.text
+                        or chunk.text in result.evidence
+                    ):
+                        result.document_id = chunk.doc_id
+                        result.chunk_id = str(chunk.chunk_id)
+                        break
+            return result
 
     async def _single_verify(
         self,
