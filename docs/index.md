@@ -3,6 +3,7 @@
 ## Getting Started
 
 * [Project Overview](/overview/overview.md) — What RAG Facts Check is and how it works.
+* [CLI](/guides/cli.md) — Ad-hoc fact-checking from the command line.
 * [Web Service](/guides/web-service.md) — FastAPI endpoints, request/response schemas, and integration guide.
 * [Configuration](/guides/configuration.md) — Tuning the checker: token budgets, retrieval, consistency runs.
 
