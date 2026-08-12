@@ -43,6 +43,6 @@ htmlcov/
 mock_datasets/*_generated.jsonl
 mock_datasets/all_*.jsonl
 
-# Test artifacts (HAR files, ad-hoc scripts)
-artifacts/*.har
+# Artifacts (debug data, HAR files, POCs, discovery notes)
+artifacts/
 test2.*

@@ -28,17 +28,45 @@ python -m pytest tests/test_integration.py -v
 
 - `@pytest.mark.llm` — tests that require a live LLM. Skipped by default. Run with `pytest -m llm`.
 
-## MockLLM
+## LLM Mocking
 
-The `MockLLM` class (in `rag_facts_check/testing/mocks.py`) provides deterministic responses based on keyword matching, enabling testing without a real LLM.
+Tests use `unittest.mock.AsyncMock` for deterministic LLM responses. Fixtures are defined in `tests/conftest.py`:
+
+### Fixtures
+
+| Fixture | Description |
+|---|---|
+| `mock_llm` | Returns parseable responses — CLAIM-format for extraction prompts, JSON with `supported` verdict for verification |
+| `mock_llm_contradicted` | Same as `mock_llm` but returns `contradicted` verdict for verification |
+| `live_llm` | Real LLM for `@pytest.mark.llm` tests. Reads config from `.env` |
+
+### Writing tests
 
 ```python
-from rag_facts_check.testing import MockLLM
+from unittest.mock import AsyncMock
+import pytest
 
-llm = MockLLM()
-# llm.generate(prompt) returns predefined responses based on prompt content
-# Tracks call_count for test assertions
+@pytest.fixture
+def my_mock_llm():
+    llm = AsyncMock()
+    async def _respond(prompt: str, **kwargs) -> str:
+        return '{"verdict": "SUPPORTED", "evidence": "...", "explanation": "..."}'
+    llm.generate = AsyncMock(side_effect=_respond)
+    return llm
 ```
+
+### Live LLM tests
+
+Tests that require a real LLM are marked with `@pytest.mark.llm` and skipped by default:
+
+```python
+@pytest.mark.llm
+async def test_something(live_llm):
+    checker = RAGFactsChecker(live_llm)
+    ...
+```
+
+Run them with `pytest -m llm`.
 
 ## Test Datasets
 

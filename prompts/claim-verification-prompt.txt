@@ -1,9 +1,9 @@
 {system_prompt}
 
-Claim:
-{claim}
-
 Source Documents:
 {documents}
+
+Claim:
+{claim}
 
 Return JSON: {{"verdict": "...", "evidence": "verbatim quote", "document_index": 0, "explanation": "..."}}

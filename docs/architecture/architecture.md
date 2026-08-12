@@ -16,7 +16,7 @@ rag_facts_check/
 ├── models.py         # Data classes: Claim, VerificationResult, CheckReport, Span
 ├── llm.py            # LLM interface + adapters (HF, API, Chat, AsyncAPI)
 ├── prompts.py        # Prompt templates for extraction & verification
-├── retriever.py      # Evidence retrieval (chunk-based lexical matching)
+├── retriever.py      # Evidence retrieval (lexical + LLM-based strategies)
 ├── spans.py          # Span matching (claim → answer, evidence → document)
 ├── checker.py        # Core pipeline: Extractor → Verifier → Aggregator
 └── server.py         # FastAPI web service (POST /check, POST /halloumi/generate)
@@ -39,7 +39,7 @@ tests/               # Pytest test suite
 Orchestrates the full fact-checking flow:
 
 - **`ClaimExtractor`** — sends the answer to the LLM and parses returned claims
-- **`ClaimVerifier`** — verifies each claim against documents (with optional self-consistency and evidence-first prompting)
+- **`ClaimVerifier`** — verifies each claim against documents (with optional self-consistency, evidence-first prompting, and batch verification)
 - **`RAGFactsChecker._aggregate`** — combines per-claim results into a `CheckReport`
 
 ### `models.py` — Data Classes
@@ -60,7 +60,10 @@ Abstract `LLM` base class with a single `generate(prompt) -> str` method. Built-
 
 ### `retriever.py` — Evidence Retrieval
 
-Splits documents into chunks and retrieves the most relevant ones per claim using lexical (keyword overlap) matching. Configurable `chunk_size` and `top_k`.
+Splits documents into chunks and retrieves the most relevant ones per claim. Two strategies are available:
+
+- **`EvidenceRetriever`** — lexical matching (keyword overlap / Jaccard similarity). Fast, no LLM calls. Configurable `chunk_size` and `top_k`.
+- **`LLMEvidenceRetriever`** — uses the LLM to judge semantic relevance of chunks. More accurate for paraphrases and domain terminology. Uses larger chunks (default 1000 words). This is the default when `use_evidence_retrieval=True`.
 
 ### `spans.py` — Span Matching
 

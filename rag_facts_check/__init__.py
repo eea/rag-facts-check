@@ -17,7 +17,7 @@ Key features:
 from .checker import ClaimExtractor, ClaimVerifier, RAGFactsChecker
 from .llm import APILLM, LLM, AsyncAPILLM, ChatLLM, HuggingFaceLLM
 from .models import CheckReport, Claim, Span, VerificationResult, score_label
-from .retriever import DocumentChunk, EvidenceRetriever
+from .retriever import DocumentChunk, EvidenceRetriever, LLMEvidenceRetriever
 
 __all__ = [
     "Claim",
@@ -31,6 +31,7 @@ __all__ = [
     "AsyncAPILLM",
     "ChatLLM",
     "EvidenceRetriever",
+    "LLMEvidenceRetriever",
     "DocumentChunk",
     "ClaimExtractor",
     "ClaimVerifier",

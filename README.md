@@ -31,10 +31,11 @@ Full documentation is in [`docs/`](docs/index.md):
 - **[Overview](docs/overview/overview.md)** — what the project is and how it works
 - **[Fact-Checking Approaches](docs/overview/approaches.md)** — survey of possible strategies
 - **[Architecture](docs/architecture/architecture.md)** — module layout and data flow
+- **[CLI](docs/guides/cli.md)** — ad-hoc fact-checking from the command line
 - **[LLM Integration](docs/guides/llm-integration.md)** — plugging in your model
 - **[Configuration](docs/guides/configuration.md)** — tuning parameters
 - **[Web Service](docs/guides/web-service.md)** — FastAPI endpoints
-- **[Testing](docs/guides/testing.md)** — test suite and MockLLM
+- **[Testing](docs/guides/testing.md)** — test suite and AsyncMock fixtures
 
 ## Requirements
 

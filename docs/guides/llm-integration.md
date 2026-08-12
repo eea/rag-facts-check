@@ -55,4 +55,4 @@ checker = RAGFactsChecker(llm)
 | `APILLM` | HTTP completion endpoints (vLLM, Ollama, llama.cpp) |
 | `ChatLLM` | Chat-completion format APIs (OpenAI-compatible) |
 | `AsyncAPILLM` | Async HTTP API client for the web service |
-| `MockLLM` | Deterministic keyword-based responses for testing |
+| `AsyncMock` (stdlib) | Deterministic responses for testing — see [Testing](/guides/testing.md) |

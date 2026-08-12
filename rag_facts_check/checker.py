@@ -23,9 +23,11 @@ from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
     CLAIM_EXTRACTION_SYSTEM,
+    CLAIM_VERIFICATION_BATCH_SYSTEM,
     CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
     CLAIM_VERIFICATION_SYSTEM,
     format_claim_extraction_prompt,
+    format_claim_verification_batch_prompt,
     format_claim_verification_evidence_first_prompt,
     format_claim_verification_prompt,
     format_documents,
@@ -294,11 +296,12 @@ class ClaimVerifier:
         self,
         llm: LLM,
         max_new_tokens: int = 512,
-        max_docs_chars: int = 8000,
-        max_chars_per_doc: int = 2000,
+        max_docs_chars: int = 100000,
+        max_chars_per_doc: int = 10000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
         verification_agent: "AtomicAgent | None" = None,
+        batch_size: int = 1,
     ):
         """Initialize the claim verifier.
 
@@ -312,6 +315,9 @@ class ClaimVerifier:
                 and aggregates via majority vote.
             evidence_first: If True, use the evidence-first multi-step prompt.
             verification_agent: Optional atomic-agents agent for structured output.
+            batch_size: Number of claims to verify in a single LLM call.
+                When >1, claims are grouped into batches and verified together,
+                reducing the number of LLM calls. Default is 1 (sequential).
         """
         self.llm = llm
         self.max_new_tokens = max_new_tokens
@@ -320,6 +326,7 @@ class ClaimVerifier:
         self.num_consistency_runs = num_consistency_runs
         self.evidence_first = evidence_first
         self.verification_agent = verification_agent
+        self.batch_size = batch_size
 
     async def verify(
         self,
@@ -362,7 +369,18 @@ class ClaimVerifier:
                 results.append(result)
             return self._aggregate_consistency(claim, chunks, results)
         else:
-            return await self._single_verify(claim, docs_to_verify, temperature=0.1)
+            result = await self._single_verify(claim, docs_to_verify, temperature=0.1)
+            # Extract document_id from chunks when available
+            if chunks and result.evidence and result.evidence != "N/A":
+                for chunk in chunks:
+                    if (
+                        result.evidence.strip('"').strip() in chunk.text
+                        or chunk.text in result.evidence
+                    ):
+                        result.document_id = chunk.doc_id
+                        result.chunk_id = str(chunk.chunk_id)
+                        break
+            return result
 
     async def _single_verify(
         self,
@@ -570,6 +588,170 @@ class ClaimVerifier:
             explanation=explanation,
         )
 
+    # ------------------------------------------------------------------
+    # Batch verification
+    # ------------------------------------------------------------------
+
+    async def verify_batch(
+        self,
+        claims: list[Claim],
+        documents: list[str] | list[dict[str, str]],
+    ) -> list[VerificationResult]:
+        """Verify multiple claims in batches.
+
+        Groups claims into batches of ``batch_size`` and sends each batch
+        as a single LLM call. Documents are sent once per batch (KV cache
+        reuse), and all claims in the batch are verified together.
+
+        Args:
+            claims: Claims to verify.
+            documents: Source documents.
+
+        Returns:
+            List of :class:`VerificationResult`, one per claim.
+        """
+        if not claims:
+            return []
+
+        if self.batch_size < 2:
+            # Fall back to sequential verification
+            return [
+                await self.verify(claim, documents)
+                for claim in claims
+            ]
+
+        # Group claims into batches
+        batches = [
+            claims[i : i + self.batch_size]
+            for i in range(0, len(claims), self.batch_size)
+        ]
+
+        log.info(
+            "verify_batch: %d claims in %d batches (batch_size=%d)",
+            len(claims),
+            len(batches),
+            self.batch_size,
+        )
+
+        results: list[VerificationResult] = []
+        for batch in batches:
+            batch_results = await self._single_batch_verify(batch, documents)
+            results.extend(batch_results)
+
+        return results
+
+    async def _single_batch_verify(
+        self,
+        claims: list[Claim],
+        documents: list[str] | list[dict[str, str]],
+    ) -> list[VerificationResult]:
+        """Verify a single batch of claims in one LLM call."""
+        indexed_claims = [(c.index, c.text) for c in claims]
+        prompt = format_claim_verification_batch_prompt(indexed_claims, documents)
+
+        # Use larger max_new_tokens for batch responses (more claims = more output)
+        batch_tokens = max(self.max_new_tokens, len(claims) * 128)
+
+        response = await self.llm.generate(
+            prompt,
+            max_new_tokens=batch_tokens,
+            temperature=0.1,
+        )
+
+        parsed = self._parse_batch_response(response)
+
+        # Build VerificationResult from parsed data + original Claim objects
+        results = []
+        for claim in claims:
+            if claim.index in parsed:
+                p = parsed[claim.index]
+                results.append(
+                    VerificationResult(
+                        claim=claim.text,
+                        claim_index=claim.index,
+                        verdict=p["verdict"],
+                        confidence=0,
+                        evidence=p["evidence"],
+                        explanation=p["explanation"],
+                        document_index=p["document_index"],
+                    )
+                )
+            else:
+                log.warning(
+                    "verify_batch: missing result for claim %d, defaulting to not_enough_info",
+                    claim.index,
+                )
+                results.append(
+                    VerificationResult(
+                        claim=claim.text,
+                        claim_index=claim.index,
+                        verdict="not_enough_info",
+                        confidence=0,
+                        evidence="N/A",
+                        explanation="Batch response missing this claim.",
+                    )
+                )
+        return results
+
+    def _parse_batch_response(self, response: str) -> dict[int, dict]:
+        """Parse a batch verification JSON array response.
+
+        Returns a dict mapping claim_index -> dict with verdict, evidence,
+        explanation, document_index.  Claim text is filled in by the caller
+        from the original Claim objects.
+        """
+        text = response.strip()
+        # Strip markdown code fences if present (handle multi-line)
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
+            text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            log.warning("verify_batch: failed to parse JSON response: %s", response[:200])
+            return {}
+
+        if not isinstance(data, list):
+            log.warning("verify_batch: expected JSON array, got %s", type(data).__name__)
+            return {}
+
+        results: dict[int, dict] = {}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+
+            claim_index = item.get("claim_index")
+            if claim_index is None:
+                continue
+            try:
+                claim_index = int(claim_index)
+            except (ValueError, TypeError):
+                continue
+
+            # Map verdict
+            raw_verdict = str(item.get("verdict", "")).upper().strip()
+            if "SUPPORTED" in raw_verdict and "NOT" not in raw_verdict:
+                verdict = "supported"
+            elif "CONTRADICTED" in raw_verdict:
+                verdict = "contradicted"
+            else:
+                verdict = "not_enough_info"
+
+            evidence = item.get("evidence", "N/A") or "N/A"
+            explanation = item.get("explanation", "") or ""
+            doc_index_raw = item.get("document_index")
+            doc_index = int(doc_index_raw) if doc_index_raw is not None else None
+
+            results[claim_index] = {
+                "verdict": verdict,
+                "evidence": evidence,
+                "explanation": explanation,
+                "document_index": doc_index,
+            }
+
+        return results
+
 
 class RAGFactsChecker:
     """Main entry point for RAG answer fact-checking.
@@ -607,15 +789,16 @@ class RAGFactsChecker:
         max_claims: int | None = None,
         max_new_tokens: int = 512,
         max_extraction_tokens: int | None = None,
-        max_docs_chars: int = 8000,
-        max_chars_per_doc: int = 2000,
+        max_docs_chars: int = 100000,
+        max_chars_per_doc: int = 10000,
         num_consistency_runs: int = 1,
         evidence_first: bool = True,
-        use_evidence_retrieval: bool = False,
+        use_evidence_retrieval: bool = True,
         retriever: EvidenceRetriever | None = None,
         instructor_client=None,
         model: str = "gemma",
         temperature: float = 0.1,
+        batch_size: int = 1,
     ):
         """Initialize the checker.
 
@@ -640,6 +823,9 @@ class RAGFactsChecker:
                 used instead of raw LLM calls.
             model: Model name (used when building atomic agents).
             temperature: Sampling temperature (used when building atomic agents).
+            batch_size: Number of claims to verify in a single LLM call.
+                When >1, claims are grouped into batches, reducing LLM calls.
+                Default is 1 (sequential per-claim verification).
         """
         self.llm = llm
         self.max_claims = max_claims
@@ -650,7 +836,15 @@ class RAGFactsChecker:
         self.num_consistency_runs = num_consistency_runs
         self.evidence_first = evidence_first
         self.use_evidence_retrieval = use_evidence_retrieval
-        self.retriever = retriever or EvidenceRetriever(top_k=3)
+        if retriever is not None:
+            self.retriever = retriever
+        elif use_evidence_retrieval:
+            # Default: LLM-based retrieval for semantic relevance judgment
+            from .retriever import LLMEvidenceRetriever
+
+            self.retriever = LLMEvidenceRetriever(llm=llm)
+        else:
+            self.retriever = EvidenceRetriever(top_k=3)
 
         self.extractor = ClaimExtractor(llm, max_new_tokens=self.max_extraction_tokens)
         self.verifier = ClaimVerifier(
@@ -660,6 +854,7 @@ class RAGFactsChecker:
             max_chars_per_doc=max_chars_per_doc,
             num_consistency_runs=num_consistency_runs,
             evidence_first=evidence_first,
+            batch_size=batch_size,
         )
 
         # Build atomic agents when instructor client is available
@@ -746,35 +941,47 @@ class RAGFactsChecker:
         if self.max_claims is not None:
             claims = claims[: self.max_claims]
 
-        # Step 2: Pre-chunk documents for evidence retrieval
+        # Step 2: Pre-chunk documents for evidence retrieval.
+        # Skipped in batch mode — batch verification sends all documents
+        # directly and does not use per-claim chunk narrowing.
         chunks = None
-        if self.use_evidence_retrieval and documents:
+        if self.verifier.batch_size < 2 and self.use_evidence_retrieval and documents:
             chunks = self.retriever.chunk_documents(documents)
 
         # When evidence retrieval is disabled, pass original documents
         # (may be dicts with title) so format_documents can include titles
         docs_for_verifier = documents
 
-        # Step 3: Verify each claim
-        results = []
-        for claim in claims:
-            # Retrieve relevant chunks for this claim
-            relevant_chunks = None
-            if chunks is not None:
-                relevant_chunks = self.retriever.retrieve(claim.text, chunks)
+        # Step 3: Verify claims
+        if self.verifier.batch_size > 1:
+            # Batch verification: one LLM call per batch of claims
+            results = await self.verifier.verify_batch(claims, docs_for_verifier)
+            # Compute evidence spans for batch results
+            for result in results:
+                evidence_span = self._find_evidence_span(result, documents, None)
+                if evidence_span:
+                    result.evidence_span = evidence_span
+        else:
+            # Sequential verification: one LLM call per claim
+            results = []
+            for claim in claims:
+                # Retrieve relevant chunks for this claim
+                relevant_chunks = None
+                if chunks is not None:
+                    relevant_chunks = await self.retriever.retrieve(claim.text, chunks)
 
-            result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
+                result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
 
-            # Compute evidence span in source documents
-            evidence_span = self._find_evidence_span(
-                result,
-                documents,
-                relevant_chunks,
-            )
-            if evidence_span:
-                result.evidence_span = evidence_span
+                # Compute evidence span in source documents
+                evidence_span = self._find_evidence_span(
+                    result,
+                    documents,
+                    relevant_chunks,
+                )
+                if evidence_span:
+                    result.evidence_span = evidence_span
 
-            results.append(result)
+                results.append(result)
 
         # Step 4: Aggregate
         return self._aggregate(answer, claims, results)

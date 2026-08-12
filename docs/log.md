@@ -1,5 +1,8 @@
 # Documentation Change Log
 
+## 2025-08-04
+* **Creation**: Added [Debug Artifacts](/guides/debug-artifacts.md) — format reference for local HAR extraction artifacts.
+
 ## 2026-07-26
 * **Update**: Updated [Web Service](/guides/web-service.md) — added HalloumiSource schema (structured sources with title, source_type, link) and categorical claim scores.
 * **Update**: Updated [Configuration](/guides/configuration.md) — added max_extraction_tokens parameter, fixed evidence_first and use_evidence_retrieval defaults.

@@ -41,6 +41,40 @@ def format_claim_extraction_prompt(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Evidence Retrieval (LLM-based)
+# ---------------------------------------------------------------------------
+
+EVIDENCE_RETRIEVAL_SYSTEM = _load("evidence-retrieval-system.txt")
+EVIDENCE_RETRIEVAL_PROMPT = _load("evidence-retrieval-prompt.txt")
+
+
+def format_evidence_retrieval_prompt(
+    claim: str,
+    chunks: list[dict],
+) -> str:
+    """Build the LLM-based evidence retrieval prompt.
+
+    Args:
+        claim: The claim text to find evidence for.
+        chunks: List of chunk dicts with ``{"id": int, "title": str, "text": str}``.
+
+    Returns:
+        Formatted prompt string.
+    """
+    chunk_lines = []
+    for c in chunks:
+        title_part = f" — {c['title']}" if c.get("title") else ""
+        chunk_lines.append(f"Chunk {c['id']}{title_part}:\n{c['text']}")
+    chunks_text = "\n\n".join(chunk_lines)
+
+    return EVIDENCE_RETRIEVAL_PROMPT.format(
+        system_prompt=EVIDENCE_RETRIEVAL_SYSTEM,
+        claim=claim,
+        chunks=chunks_text,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Claim Verification — Standard
 # ---------------------------------------------------------------------------
 
@@ -103,14 +137,47 @@ def format_claim_verification_evidence_first_prompt(
 
 
 # ---------------------------------------------------------------------------
+# Claim Verification — Batch
+# ---------------------------------------------------------------------------
+
+CLAIM_VERIFICATION_BATCH_SYSTEM = _load("claim-verification-batch-system.txt")
+CLAIM_VERIFICATION_BATCH_PROMPT = _load("claim-verification-batch-prompt.txt")
+
+
+def format_claim_verification_batch_prompt(
+    claims: list[tuple[int, str]],
+    documents: list[str] | list[dict[str, str]],
+) -> str:
+    """Build a batch verification prompt for multiple claims.
+
+    Args:
+        claims: List of (claim_index, claim_text) tuples.
+        documents: List of source document strings or dicts.
+
+    Returns:
+        Formatted prompt string.
+    """
+    formatted_docs = format_documents(documents)
+    claims_text = "\n".join(
+        f"  Claim {idx}: {text}"
+        for idx, text in claims
+    )
+    return CLAIM_VERIFICATION_BATCH_PROMPT.format(
+        system_prompt=CLAIM_VERIFICATION_BATCH_SYSTEM,
+        documents=formatted_docs,
+        claims=claims_text,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Document Formatting
 # ---------------------------------------------------------------------------
 
 
 def format_documents(
     documents: list[str] | list[dict[str, str]],
-    max_chars_per_doc: int = 2000,
-    max_total_chars: int = 8000,
+    max_chars_per_doc: int = 10000,
+    max_total_chars: int = 100000,
 ) -> str:
     """Format a list of documents into a single string for the LLM.
 

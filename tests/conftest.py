@@ -3,13 +3,19 @@ Shared test fixtures for the rag_facts_check test suite.
 
 Fixtures provide sample data, mock LLMs, and pre-configured checkers
 so individual test modules can focus on specific behaviors.
+
+LLM mocking strategy
+--------------------
+We use ``unittest.mock.AsyncMock`` so each test declares exactly what
+the LLM should return.  No keyword-matching, no prompt parsing, no
+fragile regex — just explicit response sequences.
 """
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
-from mocks.mock_llm import MockLLM
 
 from rag_facts_check import EvidenceRetriever, RAGFactsChecker
 from rag_facts_check.models import Claim, VerificationResult
@@ -18,7 +24,6 @@ from rag_facts_check.models import Claim, VerificationResult
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MOCK_DATASETS_DIR = PROJECT_ROOT / "mock_datasets"
-
 
 # ─── Sample Data ─────────────────────────────────────────────────────────────
 
@@ -54,22 +59,87 @@ SAMPLE_DOCS_RENEWABLE = [
     "grid integration of variable renewables.",
 ]
 
+# ─── LLM Response Helpers ────────────────────────────────────────────────────
+
+
+def _extraction_response(text: str) -> str:
+    """Build a CLAIM-format extraction response from sentences in *text*."""
+    import re
+
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    claims = []
+    for i, s in enumerate(sentences, 1):
+        s = s.strip().rstrip(".")
+        if s and len(s) > 5:
+            claims.append(f"CLAIM {i}: {s}.")
+    return "\n".join(claims) if claims else "NO CLAIMS"
+
+
+def _verification_json(verdict: str, evidence: str, explanation: str, document_index: int | None = None) -> str:
+    """Build a JSON verification response."""
+    obj = {
+        "verdict": verdict.upper(),
+        "evidence": evidence,
+        "explanation": explanation,
+    }
+    if document_index is not None:
+        obj["document_index"] = document_index
+    return json.dumps(obj)
+
 
 # ─── LLM Fixtures ────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
 def mock_llm():
-    """Fresh MockLLM instance for each test."""
-    return MockLLM()
+    """AsyncMock LLM that returns parseable responses for any prompt.
+
+    The mock inspects the prompt to decide which response to return:
+    - Extraction prompts → CLAIM-format sentences
+    - Verification prompts → JSON with ``supported`` verdict
+
+    ``llm.generate`` is an ``AsyncMock`` so ``.called`` / ``.call_count`` work.
+    """
+    llm = AsyncMock()
+
+    async def _respond(prompt: str, **kwargs) -> str:
+        lower = prompt.lower()
+        # Extraction prompts mention "extract" and "answer" or "text"
+        if "extract" in lower and ("answer" in lower or "text:" in lower):
+            return _extraction_response(prompt)
+        # Verification prompts
+        return _verification_json("supported", "Evidence from documents.", "Match found.")
+
+    llm.generate = AsyncMock(side_effect=_respond)
+    return llm
 
 
 @pytest.fixture
-def mock_llm_with_calls():
-    """MockLLM that tracks call count across tests."""
-    llm = MockLLM()
-    yield llm
-    assert llm.call_count > 0
+def mock_llm_contradicted():
+    """AsyncMock LLM whose verification responses return ``contradicted``."""
+    llm = AsyncMock()
+
+    async def _respond(prompt: str, **kwargs) -> str:
+        lower = prompt.lower()
+        if "extract" in lower and ("answer" in lower or "text:" in lower):
+            return _extraction_response(prompt)
+        return _verification_json("contradicted", "Contradictory evidence.", "Does not match.")
+
+    llm.generate = AsyncMock(side_effect=_respond)
+    return llm
+
+
+@pytest.fixture
+def live_llm():
+    """Real LLM for ``@pytest.mark.llm`` tests. Reads config from .env."""
+    import os
+    from rag_facts_check import AsyncAPILLM
+
+    base = os.getenv("LLM_API_BASE", "http://localhost:4002/v1")
+    url = base.rstrip("/") + "/chat/completions"
+    model = os.getenv("LLM_MODEL", "gemma")
+    api_key = os.getenv("LLM_API_KEY", "not-needed")
+    return AsyncAPILLM(url, model_name=model, api_key=api_key, chat_mode=True)
 
 
 # ─── Checker Fixtures ────────────────────────────────────────────────────────
@@ -77,7 +147,7 @@ def mock_llm_with_calls():
 
 @pytest.fixture
 def checker(mock_llm):
-    """Default RAGFactsChecker with MockLLM."""
+    """Default RAGFactsChecker with mock LLM."""
     return RAGFactsChecker(mock_llm)
 
 

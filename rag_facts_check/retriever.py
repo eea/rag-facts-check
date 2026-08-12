@@ -5,10 +5,13 @@ Instead of passing all documents to every claim verification (which wastes
 context and compute), this module splits documents into chunks and retrieves
 only the most relevant chunks for each claim.
 
-The default implementation uses simple lexical matching (keyword overlap).
-For better accuracy, replace with an embedding-based retriever.
+Two retrieval strategies are available:
+- ``EvidenceRetriever`` — simple lexical matching (keyword overlap)
+- ``LLMEvidenceRetriever`` — uses the LLM itself to select relevant chunks,
+  providing semantic understanding rather than surface-level word matching
 """
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -48,7 +51,7 @@ class EvidenceRetriever:
 
         retriever = EvidenceRetriever(chunk_size=200, top_k=3)
         chunks = retriever.chunk_documents(documents)
-        relevant = retriever.retrieve("Paris is the capital of France", chunks)
+        relevant = await retriever.retrieve("Paris is the capital of France", chunks)
     """
 
     def __init__(
@@ -270,7 +273,7 @@ class EvidenceRetriever:
 
         return chunks
 
-    def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
+    async def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
         """Retrieve the most relevant chunks for a claim.
 
         Uses keyword overlap (Jaccard-like similarity on non-stop-words).
@@ -310,3 +313,134 @@ class EvidenceRetriever:
             if word not in self.stop_words and len(word) > 2:
                 tokens.add(word)
         return tokens
+
+
+class LLMEvidenceRetriever(EvidenceRetriever):
+    """Retrieves relevant document chunks using the LLM itself.
+
+    Unlike the keyword-based :class:`EvidenceRetriever`, this class uses
+    the LLM to judge semantic relevance. For each claim, it sends all
+    chunks to the LLM and asks it to return the IDs of relevant chunks.
+
+    This is more accurate than keyword matching because the LLM understands
+    paraphrases, synonyms, and domain-specific terminology (e.g., it knows
+    that "cap-and-trade" and "emissions allowance trading" refer to the
+    same concept).
+
+    Uses larger chunks (default 1000 words) so the LLM has enough context
+    to judge relevance without missing cross-sentence connections.
+
+    Example::
+
+        retriever = LLMEvidenceRetriever(llm=llm, chunk_size=1000)
+        chunks = retriever.chunk_documents(documents)
+        relevant = await retriever.retrieve("EU has a carbon trading system", chunks)
+    """
+
+    def __init__(
+        self,
+        llm,
+        chunk_size: int = 1000,
+        top_k: int = 5,
+    ):
+        """Initialize the LLM-based retriever.
+
+        Args:
+            llm: LLM backend implementing the :class:`LLM` interface
+                (must support ``async generate()``).
+            chunk_size: Target number of words per chunk. Larger chunks
+                give the LLM more context for relevance judgment.
+            top_k: Maximum number of chunks to return. The LLM may return
+                fewer if fewer chunks are relevant.
+        """
+        super().__init__(chunk_size=chunk_size, top_k=top_k)
+        self.llm = llm
+
+    async def retrieve(
+        self, claim: str, chunks: list[DocumentChunk]
+    ) -> list[DocumentChunk]:
+        """Use the LLM to select relevant chunks for a claim.
+
+        Args:
+            claim: The claim text.
+            chunks: List of document chunks to search.
+
+        Returns:
+            Chunks the LLM deemed relevant, up to ``top_k``.
+        """
+        if not chunks:
+            return []
+
+        # Build chunk descriptors for the prompt
+        chunk_dicts = [
+            {
+                "id": i,
+                "title": chunk.title,
+                "text": chunk.text,
+            }
+            for i, chunk in enumerate(chunks)
+        ]
+
+        # Build and send the retrieval prompt
+        from .prompts import format_evidence_retrieval_prompt
+
+        prompt = format_evidence_retrieval_prompt(claim, chunk_dicts)
+        response = await self.llm.generate(
+            prompt,
+            max_new_tokens=256,
+            temperature=0.0,
+        )
+
+        # Parse the LLM's response as a JSON array of chunk IDs
+        selected_ids = self._parse_chunk_ids(response, max_id=len(chunks) - 1)
+
+        # Map IDs back to chunks, respecting top_k
+        id_to_chunk = {i: chunk for i, chunk in enumerate(chunks)}
+        result = [
+            id_to_chunk[iid]
+            for iid in selected_ids[: self.top_k]
+            if iid in id_to_chunk
+        ]
+
+        # Fallback: if the LLM returned nothing, return the first top_k chunks
+        if not result:
+            result = chunks[: self.top_k]
+
+        return result
+
+    def _parse_chunk_ids(self, text: str, max_id: int | None = None) -> list[int]:
+        """Parse chunk IDs from the LLM's JSON array response.
+
+        Handles various formats: pure JSON, JSON in code fences,
+        JSON embedded in prose, etc.
+
+        Args:
+            text: The LLM response text.
+            max_id: Maximum valid chunk ID. IDs outside 0..max_id are
+                discarded, preventing years/percentages from being
+                mistaken for chunk indices.
+        """
+        def _in_range(n: int) -> bool:
+            return max_id is None or (0 <= n <= max_id)
+
+        # Try direct JSON parse first
+        text = text.strip()
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [int(x) for x in parsed if isinstance(x, (int, float)) and _in_range(int(x))]
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try to find a JSON array in the text
+        match = re.search(r"\[\s*(?:\d+\s*,?\s*)*\]", text)
+        if match:
+            try:
+                parsed = json.loads(match.group())
+                return [int(x) for x in parsed if isinstance(x, (int, float)) and _in_range(int(x))]
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Last resort: extract all integers from the text, filtered to valid range
+        numbers = re.findall(r"\b(\d+)\b", text)
+        return [int(n) for n in numbers if _in_range(int(n))]

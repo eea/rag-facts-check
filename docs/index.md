@@ -3,6 +3,7 @@
 ## Getting Started
 
 * [Project Overview](/overview/overview.md) — What RAG Facts Check is and how it works.
+* [CLI](/guides/cli.md) — Ad-hoc fact-checking from the command line.
 * [Web Service](/guides/web-service.md) — FastAPI endpoints, request/response schemas, and integration guide.
 * [Configuration](/guides/configuration.md) — Tuning the checker: token budgets, retrieval, consistency runs.
 
@@ -19,4 +20,5 @@
 * [LLM Integration](/guides/llm-integration.md) — Plugging in HTTP API or custom models.
 * [Testing](/guides/testing.md) — Test suite, MockLLM, and mock datasets.
 * [Architecture Tension: Multi-Turn Conversations](/architecture-tension.md) — Design considerations for multi-turn chat scenarios.
+* [Debug Artifacts](/guides/debug-artifacts.md) — Local-only HAR extraction format reference.
 * [Debug Command: debug-check](/debug-prompts/debug-check.md) — CLI debug pipeline reference.
