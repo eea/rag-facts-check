@@ -797,7 +797,7 @@ class RAGFactsChecker:
         instructor_client=None,
         model: str = "gemma",
         temperature: float = 0.1,
-        batch_size: int = 30,
+        batch_size: int = 20,
     ):
         """Initialize the checker.
 
@@ -824,7 +824,7 @@ class RAGFactsChecker:
             temperature: Sampling temperature (used when building atomic agents).
             batch_size: Number of claims to verify in a single LLM call.
                 When >1, claims are grouped into batches, reducing LLM calls.
-                Default is 30 (batch verification).
+                Default is 20 (batch verification).
         """
         self.llm = llm
         self.max_claims = max_claims
