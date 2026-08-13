@@ -75,7 +75,9 @@ def _extraction_response(text: str) -> str:
     return "\n".join(claims) if claims else "NO CLAIMS"
 
 
-def _verification_json(verdict: str, evidence: str, explanation: str, document_index: int | None = None) -> str:
+def _verification_json(
+    verdict: str, evidence: str, explanation: str, document_index: int | None = None,
+) -> str:
     """Build a JSON verification response."""
     obj = {
         "verdict": verdict.upper(),
@@ -87,6 +89,34 @@ def _verification_json(verdict: str, evidence: str, explanation: str, document_i
     return json.dumps(obj)
 
 
+def _verification_batch_json(verdict: str, prompt: str) -> str:
+    """Build a JSON array batch verification response.
+
+    Inspects the prompt to extract claim indices and returns one result
+    per claim. Falls back to claims 1..3 if indices can't be parsed.
+    """
+    import re
+
+    # Extract claim indices from the prompt (e.g. "Claim 1: ...", "Claim 2: ...")
+    indices = [
+        int(m)
+        for m in re.findall(r"Claim\s+(\d+):", prompt)
+    ]
+    # Default to claims 1-3 if no indices found
+    if not indices:
+        indices = [1, 2, 3]
+
+    return json.dumps([
+        {
+            "claim_index": idx,
+            "verdict": verdict.upper(),
+            "evidence": "Evidence from documents.",
+            "explanation": "Match found.",
+        }
+        for idx in indices
+    ])
+
+
 # ─── LLM Fixtures ────────────────────────────────────────────────────────────
 
 
@@ -96,7 +126,8 @@ def mock_llm():
 
     The mock inspects the prompt to decide which response to return:
     - Extraction prompts → CLAIM-format sentences
-    - Verification prompts → JSON with ``supported`` verdict
+    - Batch verification prompts → JSON array with ``supported`` verdicts
+    - Single verification prompts → JSON with ``supported`` verdict
 
     ``llm.generate`` is an ``AsyncMock`` so ``.called`` / ``.call_count`` work.
     """
@@ -104,10 +135,15 @@ def mock_llm():
 
     async def _respond(prompt: str, **kwargs) -> str:
         lower = prompt.lower()
+        # Batch verification prompts contain "claims to verify" (plural)
+        # Check this BEFORE extraction — batch prompts contain document text
+        # that could falsely trigger the extraction branch.
+        if "claims to verify" in lower:
+            return _verification_batch_json("supported", prompt)
         # Extraction prompts mention "extract" and "answer" or "text"
         if "extract" in lower and ("answer" in lower or "text:" in lower):
             return _extraction_response(prompt)
-        # Verification prompts
+        # Single verification prompts
         return _verification_json("supported", "Evidence from documents.", "Match found.")
 
     llm.generate = AsyncMock(side_effect=_respond)
@@ -121,6 +157,8 @@ def mock_llm_contradicted():
 
     async def _respond(prompt: str, **kwargs) -> str:
         lower = prompt.lower()
+        if "claims to verify" in lower:
+            return _verification_batch_json("contradicted", prompt)
         if "extract" in lower and ("answer" in lower or "text:" in lower):
             return _extraction_response(prompt)
         return _verification_json("contradicted", "Contradictory evidence.", "Does not match.")
@@ -133,6 +171,7 @@ def mock_llm_contradicted():
 def live_llm():
     """Real LLM for ``@pytest.mark.llm`` tests. Reads config from .env."""
     import os
+
     from rag_facts_check import AsyncAPILLM
 
     base = os.getenv("LLM_API_BASE", "http://localhost:4002/v1")
@@ -159,8 +198,12 @@ def checker_no_retrieval(mock_llm):
 
 @pytest.fixture
 def checker_self_consistency(mock_llm):
-    """Checker with self-consistency (3 runs)."""
-    return RAGFactsChecker(mock_llm, num_consistency_runs=3)
+    """Checker with self-consistency (3 runs).
+
+    Uses batch_size=1 because self-consistency (multiple verification runs
+    with different temperatures) is only supported in sequential mode.
+    """
+    return RAGFactsChecker(mock_llm, num_consistency_runs=3, batch_size=1)
 
 
 @pytest.fixture

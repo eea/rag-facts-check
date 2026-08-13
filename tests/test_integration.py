@@ -55,7 +55,7 @@ class TestEndToEnd:
         assert len(report.results) == len(report.claims)
 
     async def test_pipeline_with_self_consistency(self, mock_llm, climate_change_dataset):
-        checker = RAGFactsChecker(mock_llm, num_consistency_runs=3)
+        checker = RAGFactsChecker(mock_llm, num_consistency_runs=3, batch_size=1)
         report = await checker.check(
             answer=climate_change_dataset["answer"],
             documents=climate_change_dataset["documents"],

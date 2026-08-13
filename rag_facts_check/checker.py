@@ -23,7 +23,6 @@ from .llm import LLM
 from .models import CheckReport, Claim, Span, VerificationResult
 from .prompts import (
     CLAIM_EXTRACTION_SYSTEM,
-    CLAIM_VERIFICATION_BATCH_SYSTEM,
     CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
     CLAIM_VERIFICATION_SYSTEM,
     format_claim_extraction_prompt,
@@ -798,7 +797,7 @@ class RAGFactsChecker:
         instructor_client=None,
         model: str = "gemma",
         temperature: float = 0.1,
-        batch_size: int = 1,
+        batch_size: int = 30,
     ):
         """Initialize the checker.
 
@@ -825,7 +824,7 @@ class RAGFactsChecker:
             temperature: Sampling temperature (used when building atomic agents).
             batch_size: Number of claims to verify in a single LLM call.
                 When >1, claims are grouped into batches, reducing LLM calls.
-                Default is 1 (sequential per-claim verification).
+                Default is 30 (batch verification).
         """
         self.llm = llm
         self.max_claims = max_claims
@@ -970,7 +969,9 @@ class RAGFactsChecker:
                 if chunks is not None:
                     relevant_chunks = await self.retriever.retrieve(claim.text, chunks)
 
-                result = await self.verifier.verify(claim, docs_for_verifier, chunks=relevant_chunks)
+                result = await self.verifier.verify(
+                    claim, docs_for_verifier, chunks=relevant_chunks,
+                )
 
                 # Compute evidence span in source documents
                 evidence_span = self._find_evidence_span(
