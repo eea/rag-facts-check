@@ -888,6 +888,7 @@ class RAGFactsChecker:
         self,
         answer: str,
         documents: list[str] | list[dict[str, str]],
+        batch_size: int | None = None,
     ) -> CheckReport:
         """Run the full fact-checking pipeline on a RAG answer.
 
@@ -895,11 +896,15 @@ class RAGFactsChecker:
             answer: The RAG-generated answer to verify.
             documents: List of source document strings, or list of dicts
                 with ``{"doc_id": ..., "text": ...}`` entries.
+            batch_size: Override the default batch size for this call.
 
         Returns:
             :class:`CheckReport` with overall confidence, verdict, per-claim
             results, multi-dimensional scores, and hallucination flags.
         """
+        # Apply batch_size override for this call
+        if batch_size is not None:
+            self.verifier.batch_size = batch_size
         # Step 1: Extract claims
         claims = await self.extractor.extract(answer)
 

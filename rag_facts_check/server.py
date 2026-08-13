@@ -63,6 +63,7 @@ class CheckOptions(BaseModel):
     num_consistency_runs: int = Field(1, description="Self-consistency runs (1 = single pass)")
     evidence_first: bool = Field(True, description="Use evidence-first multi-step prompting")
     use_evidence_retrieval: bool = Field(True, description="Retrieve relevant chunks per claim")
+    batch_size: int | None = Field(None, description="Number of claims to verify per LLM call (default: 30)")
 
 
 class CheckRequest(BaseModel):
@@ -92,6 +93,7 @@ class HalloumiRequest(BaseModel):
         ..., description="Source documents as plain strings or structured dicts"
     )
     max_context_segments: int = Field(0, description="Max context segments (unused, for compat)")
+    batch_size: int | None = Field(None, description="Claims per LLM call (default: 30)")
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +234,7 @@ def create_app() -> FastAPI:
             report = await checker.check(
                 answer=request.answer,
                 documents=documents,
+                batch_size=request.batch_size,
             )
             log.info(
                 "halloumi/generate: claims=%d, results=%d, verdict=%s",
@@ -268,9 +271,13 @@ def create_app() -> FastAPI:
         documents = [{"doc_id": d.doc_id, "text": d.text} for d in request.documents]
 
         try:
+            batch_size = (
+                request.options.batch_size if request.options else None
+            )
             report = await checker.check(
                 answer=request.answer,
                 documents=documents,
+                batch_size=batch_size,
             )
             return report.to_dict()
         except Exception as e:
