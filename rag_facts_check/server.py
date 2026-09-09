@@ -66,7 +66,9 @@ class CheckOptions(BaseModel):
     num_consistency_runs: int = Field(1, description="Self-consistency runs (1 = single pass)")
     evidence_first: bool = Field(True, description="Use evidence-first multi-step prompting")
     use_evidence_retrieval: bool = Field(True, description="Retrieve relevant chunks per claim")
-    batch_size: int | None = Field(None, description="Number of claims to verify per LLM call (default: 20)")
+    batch_size: int | None = Field(
+        None, description="Number of claims to verify per LLM call (default: 20)"
+    )
 
 
 class CheckRequest(BaseModel):
