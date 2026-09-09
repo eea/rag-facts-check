@@ -17,6 +17,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .models import Span
+from .spans import find_evidence_span_in_doc
+
 # Configure logging for development
 logging.basicConfig(
     level=logging.DEBUG,
@@ -298,21 +301,26 @@ app = create_app()
 def _find_source_index(evidence: str, sources: list[str]) -> int | None:
     """Find which source document contains the evidence text.
 
-    Searches each source for the evidence string (case-insensitive,
-    with whitespace normalization). Returns the source index or None.
+    Searches each source using robust evidence span matching (exact,
+    whitespace-flexible regex, and word-boundary matching).
+    Returns the source index or None.
     """
-    if not evidence:
+    if not evidence or evidence == "N/A":
         return None
 
-    # Normalize evidence for matching: collapse whitespace, strip
-    normalized = " ".join(evidence.split()).lower()
-    if len(normalized) < 10:
-        return None  # too short to match reliably
-
+    # Try robust evidence span matching first
     for i, source in enumerate(sources):
-        source_normalized = " ".join(source.split()).lower()
-        if normalized in source_normalized:
+        span = find_evidence_span_in_doc(evidence, source)
+        if span is not None:
             return i
+
+    # Fallback to normalized substring match if find_evidence_span_in_doc didn't catch it
+    normalized = " ".join(evidence.split()).lower()
+    if len(normalized) >= 10:
+        for i, source in enumerate(sources):
+            source_normalized = " ".join(source.split()).lower()
+            if normalized in source_normalized:
+                return i
     return None
 
 
@@ -384,25 +392,35 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
         # Build segment IDs from evidence spans
         segment_ids: list[str] = []
-        if result.evidence_span and result.evidence_span.start != result.evidence_span.end:
-            # evidence_span offsets are relative to the individual document
-            # the backend searched. Map them into the joined sources string
-            # by finding which source contains the evidence text.
-            evidence_text = result.evidence.strip().strip('"')
-            source_idx = _find_source_index(evidence_text, sources)
+        source_idx = None
+        evidence_span = result.evidence_span
 
+        # Prefer document_index if already identified by the checker
+        if result.document_index is not None and 0 <= result.document_index < len(sources):
+            source_idx = result.document_index
+
+        evidence_text = result.evidence.strip().strip('"') if result.evidence else ""
+        if evidence_text and evidence_text != "N/A":
+            if source_idx is None:
+                source_idx = _find_source_index(evidence_text, sources)
+            if evidence_span is None and source_idx is not None:
+                matched_span = find_evidence_span_in_doc(evidence_text, sources[source_idx])
+                if matched_span:
+                    evidence_span = Span(start=matched_span[0], end=matched_span[1])
+
+        if evidence_span and evidence_span.start != evidence_span.end:
             if source_idx is not None:
-                joined_start = source_offsets[source_idx] + result.evidence_span.start
-                joined_end = source_offsets[source_idx] + result.evidence_span.end
+                joined_start = source_offsets[source_idx] + evidence_span.start
+                joined_end = source_offsets[source_idx] + evidence_span.end
             else:
                 # Fallback: use raw offsets (may be wrong)
                 log.debug(
-                    "_to_halloumi: evidence not found in sources, using raw span %s-%s",
-                    result.evidence_span.start,
-                    result.evidence_span.end,
+                    "_to_halloumi: evidence doc index not found in sources, using raw span %s-%s",
+                    evidence_span.start,
+                    evidence_span.end,
                 )
-                joined_start = result.evidence_span.start
-                joined_end = result.evidence_span.end
+                joined_start = evidence_span.start
+                joined_end = evidence_span.end
 
             # Skip zero-length or invalid spans
             if joined_start >= 0 and joined_end > joined_start:
