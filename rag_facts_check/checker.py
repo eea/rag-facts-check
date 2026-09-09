@@ -231,7 +231,7 @@ class ClaimExtractor:
             # Merge: keep matched, replace unmatched with refined
             raw_claims = matched + refined
 
-        claims = self._to_claim_objects(raw_claims)
+        claims = self._to_claim_objects(raw_claims, answer)
 
         # Deduplicate claims that map to the same span in the answer.
         # The LLM sometimes extracts the same fact twice with different
@@ -254,6 +254,8 @@ class ClaimExtractor:
                 len(deduped),
                 len(claims) - len(deduped),
             )
+        for i, claim in enumerate(deduped):
+            claim.index = i + 1
         claims = deduped
 
         log.info("extract: %d claims extracted", len(claims))
@@ -387,16 +389,27 @@ class ClaimExtractor:
         log.debug("extract refine: LLM response (%d chars): %s", len(response), response[:500])
         return self._parse_extraction_response(response)
 
-    def _to_claim_objects(self, raw: list[dict[str, str]]) -> list[Claim]:
-        """Convert raw dicts to Claim objects."""
-        return [
-            Claim(
-                text=item["claim"],
-                index=i + 1,
-                original_text=item.get("original_text", item["claim"]),
+    def _to_claim_objects(
+        self, raw: list[dict[str, str]], answer: str = ""
+    ) -> list[Claim]:
+        """Convert raw dicts to Claim objects with computed spans when answer is provided."""
+        claims = []
+        for i, item in enumerate(raw):
+            orig = item.get("original_text", item["claim"])
+            span = None
+            if answer:
+                s = find_span_in_text(orig, answer)
+                if s is not None:
+                    span = Span(start=s[0], end=s[1])
+            claims.append(
+                Claim(
+                    text=item["claim"],
+                    index=i + 1,
+                    original_text=orig,
+                    span=span,
+                )
             )
-            for i, item in enumerate(raw)
-        ]
+        return claims
 
     def _parse_claims(self, response: str) -> list[Claim]:
         """Legacy parser kept for backward compatibility."""
