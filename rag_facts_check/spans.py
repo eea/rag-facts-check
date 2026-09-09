@@ -7,14 +7,16 @@ evidence quotes against source documents (to find character offsets for
 highlighting).
 """
 
+import re
 from difflib import SequenceMatcher
 
 
 def find_span_in_text(needle: str, haystack: str) -> tuple[int, int] | None:
     """Find the best matching span of *needle* in *haystack*.
 
-    Uses exact matching first, then falls back to sequence matching for
-    minor paraphrasing and punctuation differences.
+    Uses exact matching first, then whitespace-flexible matching,
+    and falls back to sequence matching for minor paraphrasing and
+    punctuation differences.
 
     Args:
         needle: The text to find (e.g., an extracted claim).
@@ -31,6 +33,17 @@ def find_span_in_text(needle: str, haystack: str) -> tuple[int, int] | None:
     exact = haystack.find(needle)
     if exact >= 0:
         return (exact, exact + len(needle))
+
+    # Whitespace-flexible regex match
+    needle_words = re.findall(r"\S+", needle)
+    if len(needle_words) >= 2:
+        pattern = r"\s+".join(re.escape(w) for w in needle_words)
+        try:
+            m = re.search(pattern, haystack)
+            if m:
+                return (m.start(), m.end())
+        except re.error:
+            pass
 
     # Fuzzy match: find the best local alignment
     # Use SequenceMatcher to find the best matching block
@@ -73,6 +86,9 @@ def find_evidence_span_in_doc(
 ) -> tuple[int, int] | None:
     """Find the character span of *evidence* in a single document text.
 
+    Tolerates quotation marks, ellipses, whitespace/newline differences,
+    and minor wording variations often introduced by LLMs when quoting.
+
     Args:
         evidence: The evidence quote to find.
         text: The document text to search in.
@@ -83,14 +99,45 @@ def find_evidence_span_in_doc(
     if not evidence or evidence == "N/A":
         return None
 
-    # Try exact match first
+    # Strip surrounding quotes and ellipses
+    cleaned_ev = evidence.strip().strip('"\'“”«»')
+    cleaned_ev = re.sub(r"^\.\.\.|\.\.\.$|^…|…$", "", cleaned_ev).strip()
+    if not cleaned_ev:
+        return None
+
+    # 1. Exact match on raw and cleaned evidence
     exact = text.find(evidence)
     if exact >= 0:
         return (exact, exact + len(evidence))
+    exact = text.find(cleaned_ev)
+    if exact >= 0:
+        return (exact, exact + len(cleaned_ev))
 
-    # Try fuzzy match
-    span = find_span_in_text(evidence, text)
-    return span
+    # 2. Whitespace-flexible regex match (handles newlines, double spaces, tabs)
+    words = re.findall(r"\S+", cleaned_ev)
+    if len(words) >= 2:
+        pattern = r"\s+".join(re.escape(w) for w in words)
+        try:
+            m = re.search(pattern, text, flags=re.IGNORECASE)
+            if m:
+                return (m.start(), m.end())
+        except re.error:
+            pass
+
+    # 3. Punctuation & whitespace flexible match (alphanumeric words only)
+    alnum_words = [re.sub(r"[^\w]", "", w) for w in words]
+    alnum_words = [w for w in alnum_words if w]
+    if len(alnum_words) >= 2:
+        pattern = r"[\W_]+".join(re.escape(w) for w in alnum_words)
+        try:
+            m = re.search(r"\b" + pattern + r"\b", text, flags=re.IGNORECASE)
+            if m:
+                return (m.start(), m.end())
+        except re.error:
+            pass
+
+    # 4. Fall back to fuzzy character matching
+    return find_span_in_text(cleaned_ev, text)
 
 
 def find_evidence_span(
@@ -121,13 +168,7 @@ def find_evidence_span(
             doc_id = f"doc_{i + 1}"
             text = doc
 
-        # Try exact match first
-        exact = text.find(evidence)
-        if exact >= 0:
-            return (doc_id, exact, exact + len(evidence))
-
-        # Try fuzzy match
-        span = find_span_in_text(evidence, text)
+        span = find_evidence_span_in_doc(evidence, text)
         if span is not None:
             return (doc_id, span[0], span[1])
 

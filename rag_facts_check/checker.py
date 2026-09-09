@@ -40,6 +40,114 @@ log = logging.getLogger("rag_facts_check")
 _MAX_EXTRACTION_RETRIES = 3
 
 
+def split_answer_into_chunks(
+    text: str,
+    max_chunk_chars: int = 1800,
+    min_chunk_chars: int = 300,
+) -> list[str]:
+    """Split answer text into manageable chunks respecting table and paragraph boundaries.
+
+    Ensures that long answers (e.g. detailed tables with many rows or multiple sections)
+    do not exceed the LLM's output token budget during claim extraction.
+
+    Args:
+        text: The answer text to split.
+        max_chunk_chars: Maximum characters per chunk.
+        min_chunk_chars: Minimum characters to avoid tiny trailing/leading chunks.
+
+    Returns:
+        List of text chunks covering the entire answer.
+    """
+    if not text or not text.strip():
+        return []
+    if len(text) <= max_chunk_chars:
+        return [text]
+
+    lines = text.split("\n")
+    chunks: list[str] = []
+    table_header: list[str] = []
+    in_table = False
+    current_chunk_lines: list[str] = []
+    current_chunk_len = 0
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        is_table_row = stripped.startswith("|") and stripped.endswith("|")
+
+        if is_table_row:
+            if not in_table:
+                in_table = True
+                table_header = [line]
+                if i + 1 < len(lines) and re.match(r"^\|[\s\-:|]+\|$", lines[i + 1].strip()):
+                    i += 1
+                    table_header.append(lines[i])
+
+                if current_chunk_lines:
+                    chunk_str = "\n".join(current_chunk_lines).strip()
+                    if chunk_str:
+                        chunks.append(chunk_str)
+                    current_chunk_lines = []
+                    current_chunk_len = 0
+
+                current_chunk_lines = list(table_header)
+                current_chunk_len = sum(len(l) + 1 for l in current_chunk_lines)
+                i += 1
+                continue
+            else:
+                line_len = len(line) + 1
+                if current_chunk_len + line_len > max_chunk_chars and len(current_chunk_lines) > len(table_header):
+                    chunk_str = "\n".join(current_chunk_lines).strip()
+                    if chunk_str:
+                        chunks.append(chunk_str)
+                    current_chunk_lines = list(table_header)
+                    current_chunk_len = sum(len(l) + 1 for l in current_chunk_lines)
+                current_chunk_lines.append(line)
+                current_chunk_len += line_len
+                i += 1
+                continue
+        else:
+            if in_table:
+                in_table = False
+                if current_chunk_lines:
+                    chunk_str = "\n".join(current_chunk_lines).strip()
+                    if chunk_str:
+                        chunks.append(chunk_str)
+                    current_chunk_lines = []
+                    current_chunk_len = 0
+                table_header = []
+
+            line_len = len(line) + 1
+            if current_chunk_len + line_len > max_chunk_chars and current_chunk_lines:
+                chunk_str = "\n".join(current_chunk_lines).strip()
+                if chunk_str:
+                    chunks.append(chunk_str)
+                current_chunk_lines = []
+                current_chunk_len = 0
+            current_chunk_lines.append(line)
+            current_chunk_len += line_len
+            i += 1
+
+    if current_chunk_lines:
+        chunk_str = "\n".join(current_chunk_lines).strip()
+        if chunk_str:
+            chunks.append(chunk_str)
+
+    filtered = [c for c in chunks if c.strip()]
+    merged: list[str] = []
+    for c in filtered:
+        if (
+            merged
+            and len(merged[-1]) < min_chunk_chars
+            and (len(merged[-1]) + len(c) + 2) <= max_chunk_chars
+        ):
+            merged[-1] = merged[-1] + "\n\n" + c
+        else:
+            merged.append(c)
+    return merged or [text]
+
+
 class ClaimExtractor:
     """Extracts atomic factual claims from a RAG-generated answer.
 
@@ -61,6 +169,20 @@ class ClaimExtractor:
         self.max_new_tokens = max_new_tokens
         self.extraction_agent = extraction_agent
 
+    async def _extract_chunk(self, chunk: str) -> list[dict[str, str]]:
+        """Extract claims from a single chunk of answer text."""
+        if self.extraction_agent is not None:
+            return await self._extract_with_agent(chunk)
+
+        prompt = format_claim_extraction_prompt(chunk)
+        response = await self.llm.generate(
+            prompt,
+            max_new_tokens=self.max_new_tokens,
+            temperature=0.1,
+        )
+        log.debug("extract_chunk: LLM response (%d chars): %s", len(response), response[:500])
+        return self._parse_extraction_response(response)
+
     async def extract(self, answer: str) -> list[Claim]:
         """Extract factual claims from *answer*.
 
@@ -79,18 +201,19 @@ class ClaimExtractor:
         if not answer or not answer.strip():
             return []
 
-        # Round 1: initial extraction
-        if self.extraction_agent is not None:
-            raw_claims = await self._extract_with_agent(answer)
+        chunks = split_answer_into_chunks(answer, max_chunk_chars=1800)
+        if len(chunks) <= 1:
+            raw_claims = await self._extract_chunk(answer)
         else:
-            prompt = format_claim_extraction_prompt(answer)
-            response = await self.llm.generate(
-                prompt,
-                max_new_tokens=self.max_new_tokens,
-                temperature=0.1,
+            log.info(
+                "extract: answer is %d chars, split into %d chunks for complete extraction",
+                len(answer),
+                len(chunks),
             )
-            log.debug("extract: LLM response (%d chars): %s", len(response), response[:500])
-            raw_claims = self._parse_extraction_response(response)
+            raw_claims = []
+            for chunk in chunks:
+                chunk_claims = await self._extract_chunk(chunk)
+                raw_claims.extend(chunk_claims)
 
         # Multi-turn refinement: fix claims whose original_text isn't in answer
         for attempt in range(1, _MAX_EXTRACTION_RETRIES + 1):
@@ -1019,10 +1142,13 @@ class RAGFactsChecker:
                 if span is not None:
                     return Span(start=span[0], end=span[1])
 
-        # Step 2: Search all documents
-        all_match = find_evidence_span(evidence, documents)
-        if all_match is not None:
-            return Span(start=all_match[1], end=all_match[2])
+        # Step 2: Search all documents and record matching document_index
+        for i, doc in enumerate(documents):
+            doc_text = doc["text"] if isinstance(doc, dict) else doc
+            span = find_evidence_span_in_doc(evidence, doc_text)
+            if span is not None:
+                result.document_index = i
+                return Span(start=span[0], end=span[1])
 
         # Evidence quote not found in any document. Return None so the
         # segment is skipped — better than a bogus span pointing to
