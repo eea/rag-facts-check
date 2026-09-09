@@ -32,7 +32,7 @@ from .prompts import (
     format_documents,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
-from .spans import find_evidence_span, find_evidence_span_in_doc, find_span_in_text
+from .spans import find_evidence_span_in_doc, find_span_in_text
 
 log = logging.getLogger("rag_facts_check")
 
@@ -92,17 +92,19 @@ def split_answer_into_chunks(
                     current_chunk_len = 0
 
                 current_chunk_lines = list(table_header)
-                current_chunk_len = sum(len(l) + 1 for l in current_chunk_lines)
+                current_chunk_len = sum(len(row_line) + 1 for row_line in current_chunk_lines)
                 i += 1
                 continue
             else:
                 line_len = len(line) + 1
-                if current_chunk_len + line_len > max_chunk_chars and len(current_chunk_lines) > len(table_header):
+                exceeds = current_chunk_len + line_len > max_chunk_chars
+                has_rows = len(current_chunk_lines) > len(table_header)
+                if exceeds and has_rows:
                     chunk_str = "\n".join(current_chunk_lines).strip()
                     if chunk_str:
                         chunks.append(chunk_str)
                     current_chunk_lines = list(table_header)
-                    current_chunk_len = sum(len(l) + 1 for l in current_chunk_lines)
+                    current_chunk_len = sum(len(row_line) + 1 for row_line in current_chunk_lines)
                 current_chunk_lines.append(line)
                 current_chunk_len += line_len
                 i += 1

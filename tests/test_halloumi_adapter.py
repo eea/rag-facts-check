@@ -3,7 +3,7 @@
 import pytest
 
 from rag_facts_check.models import CheckReport, Claim, Span, VerificationResult
-from rag_facts_check.server import _to_halloumi_format
+from rag_facts_check.server import _find_source_index, _to_halloumi_format
 
 
 @pytest.fixture
@@ -224,3 +224,84 @@ class TestToHalloumiFormat:
         result = _to_halloumi_format(report, ["Some source."], "Some answer.")
         assert result["claims"][0]["skipped"] is False
         assert result["claims"][1]["skipped"] is True
+
+    def test_to_halloumi_uses_document_index_mapping(self):
+        """When document_index is set, segments map to the correct source offset."""
+        sources = [
+            "Source 1 has 20 chars.",  # len = 22
+            "Source 2 has the actual evidence quote right here.",  # len = 50
+        ]
+        report = CheckReport(
+            answer="Answer statement.",
+            claims=[Claim(text="Answer statement.", index=1, span=Span(0, 17))],
+            results=[
+                VerificationResult(
+                    claim="Answer statement.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=95,
+                    evidence="actual evidence quote",
+                    explanation="Found in source 2.",
+                    document_index=1,
+                    evidence_span=Span(start=17, end=38),  # offset inside source 2
+                )
+            ],
+        )
+        result = _to_halloumi_format(report, sources, "Answer statement.")
+        assert len(result["segments"]) == 1
+        seg = result["segments"]["0"]
+        # Expected: offset of source 2 (22) + span.start (17) = 39, span.end (38) + 22 = 60
+        assert seg["startOffset"] == 22 + 17
+        assert seg["endOffset"] == 22 + 38
+        assert result["claims"][0]["segmentIds"] == ["0"]
+
+    def test_to_halloumi_computes_missing_evidence_span_from_evidence_text(self):
+        sources = [
+            "First doc text without match.",
+            "The European Climate Law mandates net-zero by 2050.",
+        ]
+        report = CheckReport(
+            answer="Net-zero by 2050.",
+            claims=[Claim(text="Net-zero by 2050.", index=1, span=Span(0, 17))],
+            results=[
+                VerificationResult(
+                    claim="Net-zero by 2050.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=95,
+                    evidence="European Climate Law mandates net-zero by 2050",
+                    explanation="Matched via text fallback.",
+                    document_index=None,
+                    evidence_span=None,  # missing span
+                )
+            ],
+        )
+        result = _to_halloumi_format(report, sources, "Net-zero by 2050.")
+        assert len(result["segments"]) == 1
+        assert result["claims"][0]["segmentIds"] == ["0"]
+
+
+class TestFindSourceIndex:
+    """Tests for _find_source_index."""
+
+    def test_find_source_index_basic(self):
+        sources = ["Source A text.", "Source B contains the target evidence.", "Source C."]
+        assert _find_source_index("target evidence", sources) == 1
+
+    def test_find_source_index_with_newlines_in_source(self):
+        sources = [
+            "Source A.",
+            "The EU is largely on track\n to meet the agreed targets \nfor 2030.",
+        ]
+        evidence = "The EU is largely on track to meet the agreed targets for 2030"
+        assert _find_source_index(evidence, sources) == 1
+
+    def test_find_source_index_empty_and_na(self):
+        sources = ["Source text."]
+        assert _find_source_index("", sources) is None
+        assert _find_source_index("N/A", sources) is None
+
+    def test_find_source_index_not_found(self):
+        sources = ["Source A.", "Source B."]
+        assert _find_source_index("completely absent evidence quote", sources) is None
+

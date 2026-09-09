@@ -7,7 +7,11 @@ Covers ClaimExtractor, ClaimVerifier, RAGFactsChecker, and aggregation logic.
 import pytest
 
 from rag_facts_check import EvidenceRetriever, RAGFactsChecker
-from rag_facts_check.checker import ClaimExtractor, ClaimVerifier
+from rag_facts_check.checker import (
+    ClaimExtractor,
+    ClaimVerifier,
+    split_answer_into_chunks,
+)
 from rag_facts_check.models import CheckReport, Claim, Span, VerificationResult
 from rag_facts_check.retriever import DocumentChunk
 
@@ -600,3 +604,171 @@ class TestRAGFactsChecker:
         ]
         score = checker._compute_answer_score(results)
         assert score == 0.0
+
+
+# ── Chunking & Span Deduplication tests ──
+
+
+class TestSplitAnswerIntoChunks:
+    """Tests for split_answer_into_chunks."""
+
+    def test_empty_and_short_answer(self):
+        assert split_answer_into_chunks("") == []
+        assert split_answer_into_chunks("   ") == []
+        text = "This is a short answer under limit."
+        assert split_answer_into_chunks(text, max_chunk_chars=100) == [text]
+
+    def test_plain_text_paragraphs(self):
+        para1 = "Paragraph one with several sentences to test chunking logic.\n" * 5
+        para2 = "Paragraph two with additional content to trigger splitting.\n" * 5
+        full_text = para1 + "\n" + para2
+        chunks = split_answer_into_chunks(full_text, max_chunk_chars=200, min_chunk_chars=50)
+        assert len(chunks) >= 2
+        reconstructed = " ".join(chunks)
+        assert "Paragraph one" in reconstructed
+        assert "Paragraph two" in reconstructed
+
+    def test_markdown_table_splits_and_preserves_header(self):
+        header = "| Metric | Target | Status |\n|--------|--------|--------|"
+        rows = [f"| Metric {i} | Target {i} | Status {i} |" for i in range(1, 15)]
+        table = header + "\n" + "\n".join(rows)
+
+        chunks = split_answer_into_chunks(table, max_chunk_chars=250, min_chunk_chars=50)
+        assert len(chunks) >= 2
+        for chunk in chunks:
+            assert chunk.startswith("| Metric | Target | Status |")
+            assert "|--------|--------|--------|" in chunk
+
+        for row in rows:
+            assert any(row in chunk for chunk in chunks), f"Row {row} missing from chunks"
+
+    def test_markdown_table_with_intro_and_conclusion(self):
+        intro = "## Overview of Climate Measures\n\nKey policy initiatives are summarized below:"
+        header = "| Policy | Target |\n|--------|--------|"
+        rows = [f"| Measure {i} | Target {i} by 2030 |" for i in range(1, 10)]
+        conclusion = "*Key take-aways:* The EU combines regulation and financing to achieve net-zero."
+
+        text = intro + "\n\n" + header + "\n" + "\n".join(rows) + "\n\n" + conclusion
+
+        chunks = split_answer_into_chunks(text, max_chunk_chars=300, min_chunk_chars=80)
+        assert len(chunks) >= 2
+        all_chunks_joined = "\n\n".join(chunks)
+        assert "## Overview of Climate Measures" in all_chunks_joined
+        assert "*Key take-aways:*" in all_chunks_joined
+        for row in rows:
+            assert row in all_chunks_joined
+
+    def test_multiple_tables(self):
+        table1 = "| T1 | V1 |\n|----|----|\n| A  | 1  |\n| B  | 2  |"
+        table2 = "| T2 | V2 |\n|----|----|\n| X  | 10 |\n| Y  | 20 |"
+        text = table1 + "\n\nMiddle text separating tables.\n\n" + table2
+        chunks = split_answer_into_chunks(text, max_chunk_chars=120, min_chunk_chars=30)
+        assert len(chunks) >= 2
+        combined = " ".join(chunks)
+        assert "| T1 | V1 |" in combined
+        assert "| T2 | V2 |" in combined
+
+
+class TestClaimExtractorChunkingAndDeduplication:
+    """Tests for ClaimExtractor chunked extraction, span tracking, and deduplication."""
+
+    def test_to_claim_objects_computes_spans(self):
+        extractor = ClaimExtractor.__new__(ClaimExtractor)
+        answer = "Paris is the capital of France. The Eiffel Tower was built in 1889."
+        raw = [
+            {"claim": "Paris is the capital", "original_text": "Paris is the capital of France."},
+            {"claim": "Built in 1889", "original_text": "The Eiffel Tower was built in 1889."},
+        ]
+        claims = extractor._to_claim_objects(raw, answer)
+        assert len(claims) == 2
+        assert claims[0].span is not None
+        assert claims[0].span.start == 0
+        assert claims[0].span.end == 31
+        assert claims[1].span is not None
+        assert claims[1].span.start == 32
+        assert claims[1].span.end == 67
+
+    async def test_extract_deduplicates_overlapping_spans(self):
+        """When multiple chunks extract claims with identical spans, deduplicate and reindex."""
+        class FakeLLM:
+            async def generate(self, prompt, **kwargs):
+                return (
+                    '{"claims": ['
+                    '{"claim": "Paris is capital", "original_text": "Paris is the capital of France."},'
+                    '{"claim": "Paris is French capital", "original_text": "Paris is the capital of France."},'
+                    '{"claim": "Tower in 1889", "original_text": "Eiffel Tower was built in 1889."}'
+                    ']}'
+                )
+
+        extractor = ClaimExtractor(FakeLLM())
+        answer = "Paris is the capital of France. Eiffel Tower was built in 1889."
+        claims = await extractor.extract(answer)
+
+        assert len(claims) == 2
+        assert claims[0].index == 1
+        assert claims[1].index == 2
+        assert claims[0].span == Span(start=0, end=31)
+        assert claims[1].span == Span(start=32, end=63)
+
+    async def test_extract_calls_multiple_chunks_for_long_answer(self):
+        """Answers longer than max_chunk_chars are split and each chunk is extracted."""
+        chunk_calls = []
+
+        class FakeLLM:
+            async def generate(self, prompt, **kwargs):
+                chunk_calls.append(prompt)
+                return '{"claims": [{"claim": "Sample claim", "original_text": "Sample text."}]}'
+
+        extractor = ClaimExtractor(FakeLLM())
+        long_answer = ("This is a very long text to force chunked extraction.\n\n" * 40) + "Sample text."
+        claims = await extractor.extract(long_answer)
+
+        assert len(chunk_calls) > 1
+        assert len(claims) >= 1
+
+
+class TestEvidenceSpanDocumentTracking:
+    """Tests for RAGFactsChecker._find_evidence_span and document_index tracking."""
+
+    def test_find_evidence_span_sets_document_index(self):
+        checker = RAGFactsChecker.__new__(RAGFactsChecker)
+        docs = [
+            {"doc_id": "doc_1", "text": "First doc has general info."},
+            {"doc_id": "doc_2", "text": "The EU is largely on track for 2030 targets."},
+        ]
+        result = VerificationResult(
+            claim="EU on track",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence="The EU is largely on track for 2030 targets.",
+            explanation="Found in doc 2",
+        )
+        assert result.document_index is None
+
+        span = checker._find_evidence_span(result, docs, None)
+        assert span is not None
+        assert span.start == 0
+        assert span.end == 44
+        assert result.document_index == 1
+
+    def test_find_evidence_span_prefers_provided_document_index(self):
+        checker = RAGFactsChecker.__new__(RAGFactsChecker)
+        docs = [
+            {"doc_id": "doc_1", "text": "Common phrase appears here."},
+            {"doc_id": "doc_2", "text": "Common phrase appears here too."},
+        ]
+        result = VerificationResult(
+            claim="Common phrase",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence="Common phrase",
+            explanation="Targeting doc 2 specifically",
+            document_index=1,
+        )
+
+        span = checker._find_evidence_span(result, docs, None)
+        assert span is not None
+        assert result.document_index == 1
+
