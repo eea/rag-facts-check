@@ -61,17 +61,16 @@ pipeline {
       }
       steps {
         script {
-          // Build the runtime image and push it as :<git-tag> and :latest.
+          // Build the runtime image and push it as :<git-tag>.
           // Mirrors eea/cca-frontend. The eeacms/gitflow Release stage below
           // also publishes, but pushing here keeps the tagged image available
           // even if the catalog/release step is skipped or fails.
           // On a tag build BRANCH_NAME is the tag name.
           def imageTag = env.TAG_NAME ?: env.BRANCH_NAME
           try {
-            def image = docker.build("${registry}:${imageTag}", "--no-cache .")
+            docker.build("${registry}:${imageTag}", "--no-cache .")
             docker.withRegistry('', 'eeajenkins') {
-              image.push()
-              image.push('latest')
+              sh "docker push ${registry}:${imageTag}"
             }
           } finally {
             sh "docker rmi ${registry}:${imageTag} || true"
