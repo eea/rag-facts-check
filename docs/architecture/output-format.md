@@ -56,6 +56,7 @@ Both claims and results include character offsets for clickable highlighting:
 | `evidence` | `str` | Quoted evidence from source documents |
 | `explanation` | `str` | Reasoning for the verdict |
 | `document_id` | `str` | ID of the source document (when using evidence retrieval) |
+| `document_index` | `int` | 0-based index of the source document containing the evidence |
 | `chunk_id` | `str` | ID of the retrieved chunk (when using evidence retrieval) |
 | `consistency_score` | `float` | Agreement across self-consistency runs (when `num_consistency_runs > 1`) |
 | `evidence_span` | `Span` | Character offsets of the evidence in the source document |

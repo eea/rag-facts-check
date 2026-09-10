@@ -1,85 +1,125 @@
 ---
 type: Framework
 title: Testing
-description: Test suite, MockLLM, and mock datasets.
-tags: [testing, mockllm, datasets]
-timestamp: '2025-01-01T00:00:00Z'
+description: Test suite layout, module coverage, MockLLM fixtures, and mock datasets.
+tags: [testing, mockllm, datasets, pytest]
+timestamp: '2026-09-09T00:00:00Z'
 ---
 
 # Testing
 
+RAG Facts Check includes an extensive automated test suite covering chunking, claim deduplication, span alignment across line breaks, Halloumi adapter conversions, and FastAPI web endpoints.
+
+---
+
 ## Running Tests
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
+# Run the complete test suite
+pytest
 
-# Run specific test module
-python -m pytest tests/test_checker.py -v
+# Run with verbose output
+pytest -v
 
-# Run with coverage
-python -m pytest tests/ --cov=rag_facts_check --cov-report=term-missing
+# Run specific test modules
+pytest tests/test_checker.py -v
+pytest tests/test_spans.py -v
+pytest tests/test_halloumi_adapter.py -v
 
-# Run integration tests only
-python -m pytest tests/test_integration.py -v
+# Run with test coverage report
+pytest --cov=rag_facts_check --cov-report=term-missing
+
+# Run code linter
+ruff check tests/ rag_facts_check/
 ```
 
-### Markers
+### Coverage Overview
 
-- `@pytest.mark.llm` — tests that require a live LLM. Skipped by default. Run with `pytest -m llm`.
+The current test suite contains **190 tests** with a **100% pass rate**:
 
-## LLM Mocking
+| Module | Purpose | Key Test Areas | Coverage |
+|---|---|---|---|
+| `tests/test_checker.py` | Core pipeline orchestration | `split_answer_into_chunks` (markdown tables, row integrity, header replication), claim extraction, span deduplication, batch verification, aggregation | **87%** |
+| `tests/test_spans.py` | Span matching algorithms | Quote/ellipsis stripping, exact search, whitespace regex (`\s+`), punctuation regex (`[\W_]+`), fuzzy alignment | **88%** |
+| `tests/test_halloumi_adapter.py` | Adapter & coordinate mapping | `_to_halloumi_format`, `joinedSources` coordinate mapping, score translation, segment creation | **92%** |
+| `tests/test_models.py` | Data structures | `Claim`, `VerificationResult`, `CheckReport`, `score_label`, serialization | **100%** |
+| `tests/test_retriever.py` | Evidence retrieval | Lexical keyword retrieval, `LLMEvidenceRetriever`, chunking | **95%** |
+| `tests/test_server.py` | FastAPI endpoints | `POST /check`, `POST /halloumi/generate`, `GET /health` | **84%** |
+| `tests/test_integration.py` | End-to-end execution | Full pipeline from input answer to final report | **85%** |
 
-Tests use `unittest.mock.AsyncMock` for deterministic LLM responses. Fixtures are defined in `tests/conftest.py`:
+---
 
-### Fixtures
+## Markers
+
+- `@pytest.mark.llm` — Tests requiring a live LLM endpoint. Skipped by default. Run with:
+  ```bash
+  pytest -m llm
+  ```
+
+---
+
+## LLM Mocking Architecture
+
+Tests use `unittest.mock.AsyncMock` for deterministic, offline testing. Shared fixtures live in `tests/conftest.py`:
+
+### Standard Fixtures
 
 | Fixture | Description |
 |---|---|
-| `mock_llm` | Returns parseable responses — CLAIM-format for extraction prompts, JSON with `supported` verdict for verification |
-| `mock_llm_contradicted` | Same as `mock_llm` but returns `contradicted` verdict for verification |
-| `live_llm` | Real LLM for `@pytest.mark.llm` tests. Reads config from `.env` |
+| `mock_llm` | Returns structured JSON responses: valid claims for extraction, and `supported` verdicts with verbatim evidence for verification |
+| `mock_llm_contradicted` | Same as `mock_llm` but returns `contradicted` verdicts for verification |
+| `mock_llm_not_enough_info` | Returns `not_enough_info` verdicts with `"N/A"` evidence |
+| `live_llm` | Instantiates a real `AsyncAPILLM` configured via environment variables from `.env` |
 
-### Writing tests
+### Writing Custom Mocks
 
 ```python
 from unittest.mock import AsyncMock
 import pytest
+from rag_facts_check.checker import RAGFactsChecker
 
 @pytest.fixture
-def my_mock_llm():
+def custom_mock_llm():
     llm = AsyncMock()
     async def _respond(prompt: str, **kwargs) -> str:
-        return '{"verdict": "SUPPORTED", "evidence": "...", "explanation": "..."}'
+        if "Extract atomic factual claims" in prompt:
+            return '[{"claim": "Test claim", "original_text": "verbatim text"}]'
+        return '{"verdict": "SUPPORTED", "evidence": "verbatim text", "document_index": 0}'
     llm.generate = AsyncMock(side_effect=_respond)
     return llm
+
+@pytest.mark.asyncio
+async def test_pipeline(custom_mock_llm):
+    checker = RAGFactsChecker(custom_mock_llm)
+    report = await checker.check(
+        answer="This is verbatim text.",
+        documents=["This is verbatim text in source."]
+    )
+    assert report.answer_score > 7.0
 ```
 
-### Live LLM tests
-
-Tests that require a real LLM are marked with `@pytest.mark.llm` and skipped by default:
-
-```python
-@pytest.mark.llm
-async def test_something(live_llm):
-    checker = RAGFactsChecker(live_llm)
-    ...
-```
-
-Run them with `pytest -m llm`.
+---
 
 ## Test Datasets
 
-Mock datasets in `mock_datasets/` provide realistic test cases:
+Realistic mock datasets in `mock_datasets/` provide ground-truth benchmarks:
 
-| Dataset | Documents | Claims | Notes |
+| Dataset | Documents | Claims | Scenarios Tested |
 |---|---|---|---|
-| `climate_change_hallucinated.json` | 6 chunks | 5 | Hallucinated values: 5.7°C vs 2-4°C, IPCC 2024 vs 2023, Arctic ice-free by 2035 vs 2040-2060 |
-| `renewable_energy_supported.json` | 6 chunks | 6 | All claims supported: 30%, 42%, 89%, 340 GW |
-| `phosphorus_eutrophication.json` | 6 EEA documents | 22+ | Real production data from the climate adapt chatbot |
+| `climate_change_hallucinated.json` | 6 chunks | 5 | Numeric and milestone hallucinations (5.7°C vs 2–4°C, 2035 vs 2050) |
+| `renewable_energy_supported.json` | 6 chunks | 6 | 100% grounded assertions with explicit numerical evidence |
+| `phosphorus_eutrophication.json` | 6 EEA docs | 22+ | Real-world production data captured from the Climate-ADAPT chatbot |
 
-## Running Examples
+---
+
+## Verification Commands
+
+To verify everything is in order before opening pull requests:
 
 ```bash
-python example_usage.py
+# Verify formatting and linting
+ruff check tests/ rag_facts_check/
+
+# Run the complete test suite
+pytest
 ```
