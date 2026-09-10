@@ -9,8 +9,6 @@ pipeline {
     // Rancher catalog path - set once a catalog entry exists for this image.
     template  = ""
     DEPENDENT_DOCKERFILE_URL = ""
-    dockerImage = ''
-    tagName     = ''
   }
 
   stages {
@@ -56,40 +54,16 @@ pipeline {
       }
     }
 
-    stage('Docker build & push ( on branch )') {
-      when {
-        allOf {
-          not { buildingTag() }
-          environment name: 'CHANGE_ID', value: ''
-        }
-      }
-      steps {
-        script {
-          if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-            tagName = 'latest'
-          } else {
-            tagName = "$BRANCH_NAME"
-          }
-          def date = sh(returnStdout: true, script: 'echo $(date "+%Y-%m-%dT%H%M")').trim()
-          try {
-            dockerImage = docker.build("$registry:$tagName", "--no-cache .")
-            docker.withRegistry('', 'eeajenkins') {
-              dockerImage.push()
-              dockerImage.push(date)
-            }
-          } finally {
-            sh "docker rmi $registry:$tagName || true"
-          }
-        }
-      }
-    }
-
     stage('Release ( on tag )') {
       when {
         buildingTag()
       }
       steps {
         node(label: 'docker') {
+          // eeacms/gitflow builds + pushes the Docker image, creates the GitHub
+          // release, and (when `template` is set) bumps the Rancher catalog.
+          // Needs the eeacms/rag-facts-check Docker Hub repo to exist with push
+          // rights for the eeajenkins credential.
           withCredentials([string(credentialsId: 'eea-jenkins-token', variable: 'GITHUB_TOKEN'), usernamePassword(credentialsId: 'jekinsdockerhub', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
             sh '''docker pull eeacms/gitflow; docker run -i --rm --name="$BUILD_TAG-release" \
               -e GIT_BRANCH="$BRANCH_NAME" \
