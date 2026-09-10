@@ -39,7 +39,7 @@ pipeline {
       }
     }
 
-    stage('Docker build & push') {
+    stage('Docker build & push ( on branch )') {
       when {
         allOf {
           not { buildingTag() }
@@ -67,16 +67,13 @@ pipeline {
       }
     }
 
-    stage('Release on tag creation') {
+    stage('Release ( on tag )') {
       when {
         buildingTag()
       }
       steps {
         node(label: 'docker') {
-          withCredentials([
-            string(REDACTED_SECRET*******************, variable: 'GITHUB_TOKEN'),
-            usernamePassword(REDACTED_SECRET*****************, usernameVariable: 'DOCKERHUB_USER', REDACTED_SECRET*******************)
-          ]) {
+          withCredentials([string(credentialsId: 'eea-jenkins-token', variable: 'GITHUB_TOKEN'), usernamePassword(credentialsId: 'jekinsdockerhub', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
             sh '''docker pull eeacms/gitflow; docker run -i --rm --name="$BUILD_TAG-release" \
               -e GIT_BRANCH="$BRANCH_NAME" \
               -e GIT_NAME="$GIT_NAME" \
