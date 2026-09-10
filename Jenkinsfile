@@ -30,10 +30,11 @@ pipeline {
           try {
             sh "docker build --no-cache --target test -t ${img} ."
 
-            // Lint / format: report but do not fail the build.
-            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-              sh "docker run --rm --name='${container}-lint' ${img} sh -c 'ruff check rag_facts_check/ tests/ scripts/ && ruff format --check rag_facts_check/ tests/ scripts/'"
-            }
+            // Lint / format: informational only - printed in the log, never
+            // fails or marks the build unstable. Enforcement is left to the
+            // pre-commit hook (scripts/hooks/pre-commit).
+            echo '--- ruff (informational, non-blocking) ---'
+            sh "docker run --rm --name='${container}-lint' ${img} sh -c 'ruff check rag_facts_check/ tests/ scripts/ || true; ruff format --check rag_facts_check/ tests/ scripts/ || true'"
 
             // Tests: hard failure, but always pull the junit report out first.
             def rc = sh(returnStatus: true, script: "docker run --name='${container}' ${img} pytest --junitxml=/app/junit.xml")
@@ -50,6 +51,31 @@ pipeline {
       post {
         always {
           junit testResults: 'junit.xml', allowEmptyResults: true
+        }
+      }
+    }
+
+    stage('Docker build & push ( on tag )') {
+      when {
+        buildingTag()
+      }
+      steps {
+        script {
+          // Build the runtime image and push it as :<git-tag> and :latest.
+          // Mirrors eea/cca-frontend. The eeacms/gitflow Release stage below
+          // also publishes, but pushing here keeps the tagged image available
+          // even if the catalog/release step is skipped or fails.
+          // On a tag build BRANCH_NAME is the tag name.
+          def imageTag = env.TAG_NAME ?: env.BRANCH_NAME
+          try {
+            def image = docker.build("${registry}:${imageTag}", "--no-cache .")
+            docker.withRegistry('', 'eeajenkins') {
+              image.push()
+              image.push('latest')
+            }
+          } finally {
+            sh "docker rmi ${registry}:${imageTag} || true"
+          }
         }
       }
     }
