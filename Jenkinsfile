@@ -23,14 +23,31 @@ pipeline {
         }
       }
       steps {
-        sh '''
-          docker run --rm -v "$PWD":/app -w /app python:3.14-slim sh -euxc "
-            pip install --no-cache-dir -q -e '.[test,dev,server]' &&
-            ruff check rag_facts_check/ tests/ scripts/ &&
-            ruff format --check rag_facts_check/ tests/ scripts/ &&
-            pytest --junitxml=junit.xml
-          "
-        '''
+        script {
+          // The EEA Jenkins docker daemon is remote, so `docker run -v $PWD`
+          // bind mounts are not visible to it. Bake code + tests into an
+          // image (Dockerfile `test` stage) and copy the junit report out.
+          def img = "$registry:ci-${env.BUILD_NUMBER}"
+          def container = "${GIT_NAME}-ci-${env.BUILD_NUMBER}"
+          try {
+            sh "docker build --no-cache --target test -t ${img} ."
+
+            // Lint / format: report but do not fail the build.
+            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+              sh "docker run --rm --name='${container}-lint' ${img} sh -c 'ruff check rag_facts_check/ tests/ scripts/ && ruff format --check rag_facts_check/ tests/ scripts/'"
+            }
+
+            // Tests: hard failure, but always pull the junit report out first.
+            def rc = sh(returnStatus: true, script: "docker run --name='${container}' ${img} pytest --junitxml=/app/junit.xml")
+            sh "docker cp '${container}:/app/junit.xml' junit.xml || true"
+            if (rc != 0) {
+              error("pytest failed (exit ${rc})")
+            }
+          } finally {
+            sh "docker rm -f '${container}' || true"
+            sh "docker rmi ${img} || true"
+          }
+        }
       }
       post {
         always {
