@@ -32,6 +32,9 @@ Thumbs.db
 output/
 report.json
 
+# Local-only scripts (may contain credentials — never commit)
+scripts/local/
+
 # Testing
 .pytest_cache/
 .coverage

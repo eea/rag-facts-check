@@ -9,7 +9,7 @@ The dataset can be:
     ``{"answer": ..., "sources": [{"text": ..., "title": ...}, ...]}``
 
 Usage:
-    python scripts/check.py artifacts/debug-data/eu-doing-combat-climate-change/generate-request.json
+    python scripts/check.py artifacts/debug-data/<session>/generate-request.json
     python scripts/check.py --verbose mock_datasets/climate_change_hallucinated.json
 """
 
@@ -27,9 +27,9 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-import os
+import os  # noqa: E402
 
-from rag_facts_check import AsyncAPILLM, RAGFactsChecker
+from rag_facts_check import AsyncAPILLM, RAGFactsChecker  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -77,7 +77,7 @@ def print_report(name: str, report, verbose: bool = False, elapsed: float = 0) -
             f"hallucination={dims['hallucination_rate']:.1f}%"
         )
 
-    print(f"\nPer-claim results:")
+    print("\nPer-claim results:")
     for r in d["results"]:
         claim = r["claim"]
         print(f"  [{r['claim_index']:>2}] {r['verdict'].upper():15} | {claim}")
@@ -89,7 +89,7 @@ def print_report(name: str, report, verbose: bool = False, elapsed: float = 0) -
             print(f"  [!] [{f_item['claim_index']}] {claim}")
 
     if verbose:
-        print(f"\nDetailed evidence:")
+        print("\nDetailed evidence:")
         for r in d["results"]:
             print(f"\n  Claim {r['claim_index']}: {r['claim']}")
             print(f"  Verdict:    {r['verdict']}")
@@ -119,12 +119,26 @@ async def run(dataset_path: str, verbose: bool = False, batch_size: int = 1) -> 
     url = base.rstrip("/") + "/chat/completions"
     model = os.getenv("LLM_MODEL", "gemma")
     api_key = os.getenv("LLM_API_KEY", "not-needed")
+    max_tokens = int(os.getenv("LLM_MAX_TOKENS", "512"))
+    timeout = float(os.getenv("LLM_TIMEOUT", "120"))
+    extra_body = json.loads(os.getenv("LLM_EXTRA_BODY", "{}"))
 
     if verbose:
-        print(f"LLM: {model} at {url}")
+        print(
+            f"LLM: {model} at {url} (max_tokens={max_tokens}, timeout={timeout:.0f}s"
+            + (f", extra_body={extra_body}" if extra_body else "")
+        )
 
-    llm = AsyncAPILLM(url, model_name=model, api_key=api_key, chat_mode=True)
-    checker = RAGFactsChecker(llm, batch_size=batch_size)
+    llm = AsyncAPILLM(
+        url, model_name=model, api_key=api_key, chat_mode=True,
+        max_new_tokens=max_tokens, timeout=timeout, extra_body=extra_body,
+    )
+    checker = RAGFactsChecker(
+        llm,
+        batch_size=batch_size,
+        max_new_tokens=max_tokens,
+        max_extraction_tokens=max_tokens,
+    )
 
     if verbose:
         print(f"Batch size: {batch_size}")
