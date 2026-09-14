@@ -12,8 +12,11 @@ Two retrieval strategies are available:
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass
+
+log = logging.getLogger("rag_facts_check")
 
 
 @dataclass
@@ -385,11 +388,18 @@ class LLMEvidenceRetriever(EvidenceRetriever):
         from .prompts import format_evidence_retrieval_prompt
 
         prompt = format_evidence_retrieval_prompt(claim, chunk_dicts)
-        response = await self.llm.generate(
-            prompt,
-            max_new_tokens=256,
-            temperature=0.0,
-        )
+        try:
+            response = await self.llm.generate(
+                prompt,
+                max_new_tokens=4096,
+                temperature=0.0,
+            )
+        except Exception:
+            # Retrieval is an optimization — on failure (e.g. reasoning
+            # models exhausting small token budgets) fall back to the
+            # first top_k chunks rather than failing the whole check.
+            log.warning("evidence retrieval failed for claim, using first %d chunks", self.top_k)
+            return chunks[: self.top_k]
 
         # Parse the LLM's response as a JSON array of chunk IDs
         selected_ids = self._parse_chunk_ids(response, max_id=len(chunks) - 1)

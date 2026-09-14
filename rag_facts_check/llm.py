@@ -6,7 +6,11 @@ works with any model backend.  Implement ``LLM`` for your specific
 local setup, or use one of the provided adapters.
 """
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
+
+log = logging.getLogger("rag_facts_check")
 
 try:
     import torch
@@ -207,7 +211,16 @@ class APILLM(LLM):
         # Handle different API response formats
         if "choices" in data:
             choice = data["choices"][0]
-            return choice.get("text", choice.get("message", {}).get("content", ""))
+            content = choice.get("text", choice.get("message", {}).get("content"))
+            # Reasoning models can return null content when the reasoning
+            # output exhausts the token budget — surface this explicitly.
+            if content is None:
+                raise ValueError(
+                    "LLM returned null content "
+                    f"(finish_reason={choice.get('finish_reason')!r}); "
+                    "reasoning tokens may have exhausted the max_tokens budget"
+                )
+            return content
         elif "generated_text" in data:
             return data["generated_text"]
         elif "response" in data:
@@ -278,6 +291,9 @@ class AsyncAPILLM(LLM):
         max_new_tokens: int = 512,
         temperature: float = 0.1,
         chat_mode: bool = False,
+        timeout: float = 120.0,
+        extra_body: dict | None = None,
+        retries: int = 3,
     ):
         if not _HAS_HTTPX:
             raise ImportError("httpx is required for AsyncAPILLM")
@@ -287,7 +303,9 @@ class AsyncAPILLM(LLM):
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
         self.chat_mode = chat_mode
-        self._client = httpx.AsyncClient(timeout=120.0)
+        self.extra_body = extra_body or {}
+        self.retries = max(0, retries)
+        self._client = httpx.AsyncClient(timeout=timeout)
 
     async def generate(
         self,
@@ -320,6 +338,26 @@ class AsyncAPILLM(LLM):
         if self.model_name:
             payload["model"] = self.model_name
 
+        payload = {**self.extra_body, **payload}
+
+        last_error: Exception | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                return await self._request_once(payload, headers)
+            except (ValueError, httpx.TransportError) as exc:
+                # Some gateways intermittently return 200 with null content
+                # (e.g. reasoning models exhausting the token budget). Retry.
+                last_error = exc
+                if attempt < self.retries:
+                    log.warning(
+                        "AsyncAPILLM: attempt %d/%d failed (%s), retrying in 2s",
+                        attempt + 1, self.retries + 1, exc,
+                    )
+                    await asyncio.sleep(2.0)
+        raise last_error  # type: ignore[misc]
+
+    async def _request_once(self, payload: dict, headers: dict) -> str:
+        """Perform a single API request and parse the response text."""
         response = await self._client.post(self.api_url, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
@@ -327,7 +365,16 @@ class AsyncAPILLM(LLM):
         # Handle different API response formats
         if "choices" in data:
             choice = data["choices"][0]
-            return choice.get("text", choice.get("message", {}).get("content", ""))
+            content = choice.get("text", choice.get("message", {}).get("content"))
+            # Reasoning models can return null content when the reasoning
+            # output exhausts the token budget — surface this explicitly.
+            if content is None:
+                raise ValueError(
+                    "LLM returned null content "
+                    f"(finish_reason={choice.get('finish_reason')!r}); "
+                    "reasoning tokens may have exhausted the max_tokens budget"
+                )
+            return content
         elif "generated_text" in data:
             return data["generated_text"]
         elif "response" in data:
