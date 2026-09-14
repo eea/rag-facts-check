@@ -9,6 +9,7 @@ Usage::
     uvicorn rag_facts_check.server:app --host 0.0.0.0 --port 8000
 """
 
+import json
 import logging
 import os
 import sys
@@ -40,7 +41,15 @@ def _load_env() -> dict[str, str]:
     except ImportError:
         pass  # python-dotenv not installed, rely on system env
 
-    for key in ("LLM_API_BASE", "LLM_API_KEY", "LLM_MODEL", "LLM_TEMPERATURE"):
+    for key in (
+        "LLM_API_BASE",
+        "LLM_API_KEY",
+        "LLM_MODEL",
+        "LLM_TEMPERATURE",
+        "LLM_MAX_TOKENS",
+        "LLM_TIMEOUT",
+        "LLM_EXTRA_BODY",
+    ):
         value = os.environ.get(key)
         if value:
             env_vars[key] = value
@@ -144,6 +153,13 @@ def create_app() -> FastAPI:
             api_key = env.get("LLM_API_KEY")
             model = env.get("LLM_MODEL", "gemma")
             temperature = float(env.get("LLM_TEMPERATURE", "0.1"))
+            max_tokens = int(env.get("LLM_MAX_TOKENS", "512"))
+            timeout = float(env.get("LLM_TIMEOUT", "120"))
+            try:
+                extra_body = json.loads(env.get("LLM_EXTRA_BODY", "{}"))
+            except json.JSONDecodeError:
+                log.warning("LLM_EXTRA_BODY is not valid JSON, ignoring")
+                extra_body = {}
 
             api_url = api_base.rstrip("/") + "/chat/completions"
             _llm = AsyncAPILLM(
@@ -152,6 +168,9 @@ def create_app() -> FastAPI:
                 api_key=api_key,
                 temperature=temperature,
                 chat_mode=True,
+                max_new_tokens=max_tokens,
+                timeout=timeout,
+                extra_body=extra_body,
             )
 
             # Build instructor-wrapped client for structured output
@@ -164,6 +183,18 @@ def create_app() -> FastAPI:
                     base_url=base_url,
                     api_key=api_key or "not-needed",
                 )
+                if extra_body:
+                    # This openai SDK version has no client-level extra_body,
+                    # so inject it into every chat.completions.create call.
+                    _original_create = openai_client.chat.completions.create
+
+                    async def _create_with_extra_body(*args, **kwargs):
+                        extra = dict(kwargs.get("extra_body") or {})
+                        extra.update(extra_body)
+                        kwargs["extra_body"] = extra
+                        return await _original_create(*args, **kwargs)
+
+                    openai_client.chat.completions.create = _create_with_extra_body
                 instructor_client = instructor.from_openai(
                     openai_client, mode=instructor.Mode.MD_JSON
                 )
@@ -179,6 +210,8 @@ def create_app() -> FastAPI:
                 instructor_client=instructor_client,
                 model=model,
                 temperature=temperature,
+                max_new_tokens=max_tokens,
+                max_extraction_tokens=max_tokens,
             )
         return _checker
 
