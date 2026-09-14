@@ -14,7 +14,8 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
-tests/
+# tests/ is kept in the build context for the Dockerfile `test` stage.
+# The `runtime` stage does not COPY it, so the production image is unaffected.
 
 # Development
 .env
@@ -35,10 +36,12 @@ docs/
 README.md
 
 # Mock datasets
-mock_datasets/
+# mock_datasets/ is kept in context for the Dockerfile `test` stage;
+# the `runtime` stage does not COPY it.
 
-# Scripts (not needed at runtime)
-scripts/
+# Scripts
+# scripts/ is kept in context for the Dockerfile `test` stage;
+# the `runtime` stage does not COPY it.
 
 # Agent skills
 .agents/

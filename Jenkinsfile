@@ -9,8 +9,6 @@ pipeline {
     // Rancher catalog path - set once a catalog entry exists for this image.
     template  = ""
     DEPENDENT_DOCKERFILE_URL = ""
-    dockerImage = ''
-    tagName     = ''
   }
 
   stages {
@@ -23,14 +21,32 @@ pipeline {
         }
       }
       steps {
-        sh '''
-          docker run --rm -v "$PWD":/app -w /app python:3.14-slim sh -euxc "
-            pip install --no-cache-dir -q -e '.[test,dev,server]' &&
-            ruff check rag_facts_check/ tests/ scripts/ &&
-            ruff format --check rag_facts_check/ tests/ scripts/ &&
-            pytest --junitxml=junit.xml
-          "
-        '''
+        script {
+          // The EEA Jenkins docker daemon is remote, so `docker run -v $PWD`
+          // bind mounts are not visible to it. Bake code + tests into an
+          // image (Dockerfile `test` stage) and copy the junit report out.
+          def img = "$registry:ci-${env.BUILD_NUMBER}"
+          def container = "${GIT_NAME}-ci-${env.BUILD_NUMBER}"
+          try {
+            sh "docker build --no-cache --target test -t ${img} ."
+
+            // Lint / format: informational only - printed in the log, never
+            // fails or marks the build unstable. Enforcement is left to the
+            // pre-commit hook (scripts/hooks/pre-commit).
+            echo '--- ruff (informational, non-blocking) ---'
+            sh "docker run --rm --name='${container}-lint' ${img} sh -c 'ruff check rag_facts_check/ tests/ scripts/ || true; ruff format --check rag_facts_check/ tests/ scripts/ || true'"
+
+            // Tests: hard failure, but always pull the junit report out first.
+            def rc = sh(returnStatus: true, script: "docker run --name='${container}' ${img} pytest --junitxml=/app/junit.xml")
+            sh "docker cp '${container}:/app/junit.xml' junit.xml || true"
+            if (rc != 0) {
+              error("pytest failed (exit ${rc})")
+            }
+          } finally {
+            sh "docker rm -f '${container}' || true"
+            sh "docker rmi ${img} || true"
+          }
+        }
       }
       post {
         always {
@@ -39,44 +55,41 @@ pipeline {
       }
     }
 
-    stage('Docker build & push') {
+    stage('Docker build & push ( on tag )') {
       when {
-        allOf {
-          not { buildingTag() }
-          environment name: 'CHANGE_ID', value: ''
-        }
+        buildingTag()
       }
       steps {
         script {
-          if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
-            tagName = 'latest'
-          } else {
-            tagName = "$BRANCH_NAME"
-          }
-          def date = sh(returnStdout: true, script: 'echo $(date "+%Y-%m-%dT%H%M")').trim()
+          // Build the runtime image and push it as :<git-tag>.
+          // Mirrors eea/cca-frontend. The eeacms/gitflow Release stage below
+          // also publishes, but pushing here keeps the tagged image available
+          // even if the catalog/release step is skipped or fails.
+          // On a tag build BRANCH_NAME is the tag name.
+          def imageTag = env.TAG_NAME ?: env.BRANCH_NAME
           try {
-            dockerImage = docker.build("$registry:$tagName", "--no-cache .")
+            docker.build("${registry}:${imageTag}", "--no-cache .")
             docker.withRegistry('', 'eeajenkins') {
-              dockerImage.push()
-              dockerImage.push(date)
+              sh "docker push ${registry}:${imageTag}"
             }
           } finally {
-            sh "docker rmi $registry:$tagName || true"
+            sh "docker rmi ${registry}:${imageTag} || true"
           }
         }
       }
     }
 
-    stage('Release on tag creation') {
+    stage('Release ( on tag )') {
       when {
         buildingTag()
       }
       steps {
         node(label: 'docker') {
-          withCredentials([
-            string(REDACTED_SECRET*******************, variable: 'GITHUB_TOKEN'),
-            usernamePassword(REDACTED_SECRET*****************, usernameVariable: 'DOCKERHUB_USER', REDACTED_SECRET*******************)
-          ]) {
+          // eeacms/gitflow builds + pushes the Docker image, creates the GitHub
+          // release, and (when `template` is set) bumps the Rancher catalog.
+          // Needs the eeacms/rag-facts-check Docker Hub repo to exist with push
+          // rights for the eeajenkins credential.
+          withCredentials([string(credentialsId: 'eea-jenkins-token', variable: 'GITHUB_TOKEN'), usernamePassword(credentialsId: 'jekinsdockerhub', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
             sh '''docker pull eeacms/gitflow; docker run -i --rm --name="$BUILD_TAG-release" \
               -e GIT_BRANCH="$BRANCH_NAME" \
               -e GIT_NAME="$GIT_NAME" \
