@@ -115,6 +115,22 @@ Controlled A/B (same prompt, unique suffixes):
   `reasoning_effort=disable` is actually implemented for Qwen3.8 via their tensorx
   integration; the parameter is accepted but observably no-ops there.
 
+### 3.5 Direct EdenAI access (2026-09-15)
+
+With a direct EdenAI API key (`api.eu.edenai.run/v3`, model
+`tensorx/qwen/qwen3.8-27b` — the same model ID and `provider: tensorx` as the
+gateway route), the disable flags were retested without LiteLLM in the path:
+
+| Parameter | Result |
+|---|---|
+| `reasoning_effort: "disable"` | accepted (200), thinking continues (29 reasoning tokens on "Say OK") |
+| `reasoning_effort: "none"` | accepted (200), identical |
+| `thinking: {"type": "disabled"}` | accepted (200), identical |
+
+**Direct access changes nothing** — the no-op lives in EdenAI's tensorx
+integration, not in LiteLLM. The direct route adds no capability over
+`.env.llmgw-qwen` (kept as `.env.edenai` for reference).
+
 ## 4. Backend comparison (2026-09-14, same dataset: `climate_change_hallucinated`)
 
 The EdenAI/LiteLLM path was not a dead end unique to its flags — the winning move was
