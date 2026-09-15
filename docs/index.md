@@ -18,6 +18,7 @@
 
 * [Fact-Checking Approaches](/overview/approaches.md) — Survey of possible RAG fact-checking strategies.
 * [LLM Integration](/guides/llm-integration.md) — Plugging in HTTP API or custom models.
+* [Disabling Reasoning on Qwen 3.8](/guides/reasoning-effort.md) — Backend comparison (vLLM, LiteLLM gateway, EdenAI, llama.cpp) and how to turn thinking off per request.
 * [Testing](/guides/testing.md) — Test suite, MockLLM, and mock datasets.
 * [Architecture Tension: Multi-Turn Conversations](/architecture-tension.md) — Design considerations for multi-turn chat scenarios.
 * [Debug Artifacts](/guides/debug-artifacts.md) — Local-only HAR extraction format reference.

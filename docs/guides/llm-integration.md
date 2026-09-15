@@ -31,6 +31,10 @@ llm = APILLM("http://localhost:8000/v1/completions", model_name="my-model")
 checker = RAGFactsChecker(llm)
 ```
 
+For reasoning models behind proxies (thinking-token budgets, `chat_template_kwargs`,
+per-request thinking control, backend speed/quality comparison), see
+[Disabling Reasoning on Qwen 3.8](reasoning-effort.md).
+
 ## Custom Local Model
 
 Implement the `LLM` abstract class:
