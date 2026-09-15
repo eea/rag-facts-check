@@ -16,6 +16,8 @@ env/
 # Environment files (never commit credentials)
 .env
 .env.local
+# Backend variant files (may contain API keys; activate with: make use-env ENV=<name>)
+.env.*
 
 # IDE
 .vscode/

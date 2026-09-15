@@ -89,6 +89,12 @@ example:
 
 # --- Server ---
 
+## use-env: Activate an LLM backend variant (make use-env ENV=vllm|llmgw-gpt-oss|llmgw-qwen|llama-cpp|llmgw-glm)
+use-env:
+	@test -f .env.$(ENV) || { echo "Unknown variant '$(ENV)'. Available: $$(ls .env.* 2>/dev/null | sed 's/^\.env\.//' | tr '\n' ' ')"; exit 1; }
+	cp .env.$(ENV) .env
+	@echo "Activated .env.$(ENV) -> .env (restart the server to apply)"
+
 ## serve: Start the FastAPI server (localhost:8000, verbose)
 serve: setup-dev
 	PYTHONDONTWRITEBYTECODE=1 $(VENV)/bin/uvicorn rag_facts_check.server:app --reload --host 0.0.0.0 --port 8000 --log-level info
