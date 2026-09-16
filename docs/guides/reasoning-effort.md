@@ -131,6 +131,38 @@ gateway route), the disable flags were retested without LiteLLM in the path:
 integration, not in LiteLLM. The direct route adds no capability over
 `.env.llmgw-qwen` (kept as `.env.edenai` for reference).
 
+### 3.6 Working EdenAI disable: nested `extra_body` provider pass-through (2026-09-15)
+
+The missing piece: LiteLLM **flattens** the request's `extra_body` into the top
+level of the body it forwards to EdenAI. So sending
+`extra_body: {"chat_template_kwargs": ...}` put the flag at EdenAI's top level,
+where it was ignored. EdenAI's documented provider pass-through is *its own*
+`extra_body` field — reachable only by **double nesting**:
+
+```json
+"extra_body": {"extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}
+```
+
+Results on `edenai/qwen3.8-27b` via llmgw (hard extraction prompt):
+
+| Run | Time | reasoning_content |
+|---|---|---|
+| 1 | 11.2s | NONE |
+| 2 | 53.1s | 4,551 chars (one miss — likely routed to a node without the flag applied) |
+| 3–6 | 7.7–12.1s | NONE each |
+
+5/6 clean, ~10s per call. Full fact-check pipeline: 178–259s (the route is
+slow even without thinking) — so `.env.llmgw-inhouse` (10.4s) remains the
+preferred public backend; `.env.llmgw-qwen` now carries this config as a
+working-but-slow alternative.
+
+Also verified with this fix in place: the taskman-307516 workaround
+(`allowed_openai_params: ["reasoning_effort"]` in the request body) does make
+LiteLLM accept top-level `reasoning_effort` — but `disable` is still a no-op
+on the tensorx backend (22.8K chars thinking on the hard prompt), confirming
+the docs gap. The permanent fix remains the proxy-side
+`model_info.allowed_openai_params` configuration.
+
 ## 4. Backend comparison (2026-09-14, same dataset: `climate_change_hallucinated`)
 
 The EdenAI/LiteLLM path was not a dead end unique to its flags — the winning move was
@@ -139,6 +171,7 @@ The EdenAI/LiteLLM path was not a dead end unique to its flags — the winning m
 | Backend | Thinking | Total time | Score | Flags |
 |---|---|---|---|---|
 | EdenAI via llmgw, `reasoning.effort=minimal` | reduced, not off | 109.7s | 6.0 | 3/5 |
+| EdenAI via llmgw, nested `extra_body` pass-through (§3.6) | off (5/6 clean) | 178–259s | 6.0 | 3/5 |
 | llama.cpp local :4000 (startup `--reasoning on`) | on (4096 budget) | 306.5s | 6.0 | 3/5 |
 | llama.cpp local :4000 + per-request `enable_thinking=false` | *unverified — flag did not apply without a server restart* | 42.3s | 7.6 | 2/5 |
 | **vLLM `gpu01.pdmz.eea:9000` direct** | **genuinely off per request** | **10.0s** | 7.0 | 3/6 |
