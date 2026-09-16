@@ -151,10 +151,32 @@ Results on `edenai/qwen3.8-27b` via llmgw (hard extraction prompt):
 | 2 | 53.1s | 4,551 chars (one miss — likely routed to a node without the flag applied) |
 | 3–6 | 7.7–12.1s | NONE each |
 
-5/6 clean, ~10s per call. Full fact-check pipeline: 178–259s (the route is
-slow even without thinking) — so `.env.llmgw-inhouse` (10.4s) remains the
-preferred public backend; `.env.llmgw-qwen` now carries this config as a
-working-but-slow alternative.
+5/6 clean, ~10s per call. Full fact-check pipeline: 178–259s — so
+`.env.llmgw-inhouse` (10.4s) remains the preferred public backend; `.env.llmgw-qwen`
+now carries this config as a working-but-slow alternative.
+
+**Where the pipeline time goes** (instrumented run, 204s total, thinking-off
+config): most calls are fast, but the tensorx route has heavy per-call tail
+latency and at least one empty response:
+
+| Call | Time | Response chars |
+|---|---|---|
+| 1 (extraction) | 1.5s | 1,737 |
+| 2 | **90.2s** | **0** ⚠️ |
+| 3 | 5.7s | 859 |
+| 4 | 0.2s | 5 |
+| 5 | 0.2s | 330 |
+| 6 | **41.1s** | 11 |
+| 7 | 7.0s | 453 |
+| 8 | **27.6s** | 4 |
+| 9 | 11.1s | 539 |
+| 10 | **17.6s** | 4 |
+| 11 | 2.2s | 332 |
+
+The 178–259s figure is therefore not sustained thinking but 4 of 11 calls
+hitting a 17–90s tail (plus one empty response the pipeline had to fall back
+on). The vLLM-backed Inhouse route shows no such variance (~1–3s per call,
+10.4s total, reproducible).
 
 Also verified with this fix in place: the taskman-307516 workaround
 (`allowed_openai_params: ["reasoning_effort"]` in the request body) does make
@@ -187,6 +209,11 @@ responses carry identical model ID and `provider: tensorx` — and LiteLLM adds 
 difference between calling EdenAI directly or through llmgw**; the large gaps in the
 table come from the *backends* (tensorx vs vLLM vs llama.cpp) and from whether
 thinking is actually off, not from the proxy.
+
+The EdenAI route's 178–259s total (with thinking off) is dominated by per-call
+tail latency, not thinking: an instrumented run shows 4 of 11 calls taking
+17–90s and one returning an empty response, while the vLLM routes stay at
+~1–3s per call with no variance (see §3.6 for the per-call breakdown).
 
 - The `Inhouse-LLM/qwen3.8-27b` route on the public gateway is the **same gpu01 vLLM
   backend**, and it accepts the thinking-off flag through LiteLLM: top-level
