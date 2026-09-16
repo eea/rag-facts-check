@@ -168,14 +168,25 @@ the docs gap. The permanent fix remains the proxy-side
 The EdenAI/LiteLLM path was not a dead end unique to its flags — the winning move was
 **bypassing it entirely** and using the vLLM deployment that powers the gateway directly:
 
-| Backend | Thinking | Total time | Score | Flags |
-|---|---|---|---|---|
-| EdenAI via llmgw, `reasoning.effort=minimal` | reduced, not off | 109.7s | 6.0 | 3/5 |
-| EdenAI via llmgw, nested `extra_body` pass-through (§3.6) | off (5/6 clean) | 178–259s | 6.0 | 3/5 |
-| llama.cpp local :4000 (startup `--reasoning on`) | on (4096 budget) | 306.5s | 6.0 | 3/5 |
-| llama.cpp local :4000 + per-request `enable_thinking=false` | *unverified — flag did not apply without a server restart* | 42.3s | 7.6 | 2/5 |
-| **vLLM `gpu01.pdmz.eea:9000` direct** | **genuinely off per request** | **10.0s** | 7.0 | 3/6 |
-| **llmgw `Inhouse-LLM/qwen3.8-27b`** + `chat_template_kwargs` | **genuinely off per request** | **10.4s** | 8.0 | 2/6 |
+| Backend | Thinking | 1 hard call | Total time | Score | Flags |
+|---|---|---|---|---|---|
+| EdenAI via llmgw, `reasoning.effort=minimal` | reduced, not off | 30–55s | 109.7s | 6.0 | 3/5 |
+| EdenAI via llmgw, nested `extra_body` pass-through (§3.6) | off (5/6 clean) | 7.7–12.1s (53s once) | 178–259s | 6.0 | 3/5 |
+| EdenAI **direct** (`api.eu.edenai.run`, §3.5) | disable flags no-op | n/a (key expired after tiny prompts) | n/a | n/a | n/a |
+| llama.cpp local :4000 (startup `--reasoning on`) | on (4096 budget) | 90s | 306.5s | 6.0 | 3/5 |
+| llama.cpp local :4000 + per-request `enable_thinking=false` | *unverified — flag did not apply without a server restart* | 8s* | 42.3s | 7.6 | 2/5 |
+| **vLLM `gpu01.pdmz.eea:9000` direct** | **genuinely off per request** | **2s** | **10.0s** | 7.0 | 3/6 |
+| **llmgw `Inhouse-LLM/qwen3.8-27b`** + `chat_template_kwargs` | **genuinely off per request** | **3s** | **10.4s** | 8.0 | 2/6 |
+
+\* llama.cpp per-request 8s is not reliable (flag may not have applied without a restart).
+
+**On "llmgw vs EdenAI direct" speed:** they run the *same tensorx backend* — the
+responses carry identical model ID and `provider: tensorx` — and LiteLLM adds only
+~8ms overhead per call (measured in gateway headers:
+`x-litellm-overhead-duration-ms: 8.158`). So there is **no meaningful speed
+difference between calling EdenAI directly or through llmgw**; the large gaps in the
+table come from the *backends* (tensorx vs vLLM vs llama.cpp) and from whether
+thinking is actually off, not from the proxy.
 
 - The `Inhouse-LLM/qwen3.8-27b` route on the public gateway is the **same gpu01 vLLM
   backend**, and it accepts the thinking-off flag through LiteLLM: top-level
