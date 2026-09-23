@@ -139,7 +139,7 @@ list:
 ## slides: Compile presentation slides and images into PowerPoint (pptx and ppt)
 slides:
 	@if command -v google-chrome >/dev/null 2>&1; then \
-		google-chrome --headless --disable-gpu --force-device-scale-factor=2 --screenshot=docs/images/pipeline_graph.png --window-size=1280,340 file://$(CURDIR)/docs/images/pipeline_graph.svg 2>/dev/null; \
+		google-chrome --headless --disable-gpu --force-device-scale-factor=2 --screenshot=docs/images/pipeline_graph.png --window-size=960,260 file://$(CURDIR)/docs/images/pipeline_graph.svg 2>/dev/null; \
 	fi
 	pandoc docs/slides.md -o docs/slides.pptx --slide-level=2
 	libreoffice --headless --convert-to ppt docs/slides.pptx --outdir docs/

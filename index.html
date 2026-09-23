@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pipeline Graph Preview — RAG Facts Check</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 30px;
+    }
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 26px;
+      margin-bottom: 8px;
+    }
+    p.lead {
+      color: #94a3b8;
+      margin-top: 0;
+      margin-bottom: 24px;
+      font-size: 15px;
+    }
+    .preview-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 35px;
+    }
+    .preview-card.highlight {
+      border: 2px solid #10b981;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
+    }
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .preview-title {
+      font-weight: 700;
+      font-size: 19px;
+      color: #38bdf8;
+    }
+    .preview-desc {
+      color: #cbd5e1;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .preview-badge {
+      background: #0284c7;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+    .preview-badge.new {
+      background: #10b981;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      display: block;
+      background: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    .links {
+      margin-top: 14px;
+      font-size: 13px;
+    }
+    .links a {
+      color: #38bdf8;
+      text-decoration: none;
+      margin-right: 18px;
+    }
+    .links a:hover {
+      text-decoration: underline;
+    }
+    .divider {
+      border-top: 1px solid #334155;
+      margin: 40px 0;
+    }
+    h2.section-header {
+      font-size: 18px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>RAG Facts Check — Pipeline Graph Previews</h1>
+    <p class="lead">Live preview server on port 8100. Refresh this page to view updates in real time without git commit/push.</p>
+
+    <h2 class="section-header">🎯 Minimalist Format (Title + Label + Single Line, No Bullets)</h2>
+
+    <!-- MINIMAL HORIZONTAL -->
+    <div class="preview-card highlight">
+      <div class="preview-header">
+        <span class="preview-title">1. Minimal Horizontal Flow (Single Row)</span>
+        <span class="preview-badge new">HORIZONTAL MINIMAL</span>
+      </div>
+      <div class="preview-desc">
+        Each card: Label pill + Bold Title + Single-line description. No bullet points, clean and simple.
+      </div>
+      <img src="/docs/images/pipeline_minimal_horizontal.png" alt="Minimal Horizontal Pipeline Graph" />
+      <div class="links">
+        <a href="/docs/images/pipeline_minimal_horizontal.png" target="_blank">🔍 Open PNG Full-Res (2560 × 320)</a>
+        <a href="/docs/images/pipeline_minimal_horizontal.svg" target="_blank">📐 Open Vector SVG</a>
+      </div>
+    </div>
+
+    <!-- MINIMAL 2-COLUMN -->
+    <div class="preview-card highlight">
+      <div class="preview-header">
+        <span class="preview-title">2. Minimal 2-Column Grid (Compact)</span>
+        <span class="preview-badge new">2-COLUMN MINIMAL</span>
+      </div>
+      <div class="preview-desc">
+        Same ultra-simple format arranged in 2 balanced columns (Left: Ingest → Extract, Right: Judge → Report).
+      </div>
+      <img src="/docs/images/pipeline_minimal_2col.png" alt="Minimal 2-Column Pipeline Graph" />
+      <div class="links">
+        <a href="/docs/images/pipeline_minimal_2col.png" target="_blank">🔍 Open PNG Full-Res (1920 × 520)</a>
+        <a href="/docs/images/pipeline_minimal_2col.svg" target="_blank">📐 Open Vector SVG</a>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <h2 class="section-header">📂 Earlier Versions (Retained for Reference)</h2>
+
+    <!-- PREVIOUS SIMPLIFIED 2-COL -->
+    <div class="preview-card">
+      <div class="preview-header">
+        <span class="preview-title">Previous 2-Column (with 2 bullet points)</span>
+      </div>
+      <img src="/docs/images/pipeline_2col_simple.png" alt="Previous 2-Column Simple" />
+      <div class="links">
+        <a href="/docs/images/pipeline_2col_simple.png" target="_blank">🔍 Open PNG</a>
+      </div>
+    </div>
+
+    <!-- PREVIOUS DETAILED 2-COL -->
+    <div class="preview-card">
+      <div class="preview-header">
+        <span class="preview-title">Previous 2-Column (Detailed with Callout Box)</span>
+      </div>
+      <img src="/docs/images/pipeline_2col_v1.png" alt="Detailed 2-Column Pipeline Graph" />
+      <div class="links">
+        <a href="/docs/images/pipeline_2col_v1.png" target="_blank">🔍 Open PNG</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 460" width="1060" height="460">
+  <defs>
+    <filter id="shadow-card" x="-6%" y="-6%" width="112%" height="116%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.06" />
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.04" />
+    </filter>
+    <marker id="arrow-down" viewBox="0 0 10 10" refX="5" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 1 0 L 5 8 L 9 0 z" fill="#94a3b8" />
+    </marker>
+    <marker id="arrow-right" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#94a3b8" />
+    </marker>
+  </defs>
+
+  <!-- Clean Canvas Background -->
+  <rect width="1060" height="460" rx="16" fill="#f8fafc" />
+
+  <!-- Connecting Arrows -->
+  <line x1="270" y1="210" x2="270" y2="238" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-down)" />
+  <line x1="790" y1="210" x2="790" y2="238" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-down)" />
+
+  <!-- Smooth connecting path from Card 2 to Card 3 -->
+  <path d="M 510 337 L 530 337 Q 535 337 535 325 L 535 127 Q 535 117 540 117 L 546 117" fill="none" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-right)" />
+
+  <!-- ==================== LEFT COLUMN ==================== -->
+
+  <!-- CARD 1: INPUT -->
+  <g transform="translate(30, 25)" filter="url(#shadow-card)">
+    <rect width="480" height="185" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 185 L 0 185 Q 0 185 0 173 Z" fill="#475569" />
+    
+    <rect x="25" y="18" width="55" height="20" rx="10" fill="#f1f5f9" />
+    <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#475569" text-anchor="middle">INPUT</text>
+    
+    <text x="92" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="700" fill="#0f172a">LLM Answer &amp; Source Documents</text>
+    <text x="25" y="55" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#64748b">Raw generative output and candidate reference materials</text>
+    
+    <line x1="25" y1="68" x2="455" y2="68" stroke="#f1f5f9" stroke-width="1.5" />
+
+    <text x="25" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Generated Answer Payload</text>
+    <text x="35" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Markdown text containing prose, bullet points, and comparison tables</text>
+
+    <text x="25" y="142" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Matched Documents</text>
+    <text x="35" y="160" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Indexed EEA websites, official environmental reports, and policy briefs</text>
+  </g>
+
+  <!-- CARD 2: EXTRACTION -->
+  <g transform="translate(30, 245)" filter="url(#shadow-card)">
+    <rect width="480" height="185" rx="12" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 185 L 0 185 Q 0 185 0 173 Z" fill="#4f46e5" />
+    
+    <rect x="25" y="18" width="55" height="20" rx="10" fill="#eef2ff" />
+    <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#4f46e5" text-anchor="middle">STEP 1</text>
+    
+    <text x="92" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="700" fill="#0f172a">LLM-Based Claim Extraction</text>
+    <text x="25" y="55" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#4338ca">split_answer_into_chunks() → Atomic claim parsing</text>
+    
+    <line x1="25" y1="68" x2="455" y2="68" stroke="#f1f5f9" stroke-width="1.5" />
+
+    <text x="25" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Extracts Multiple Claims (1..N)</text>
+    <text x="35" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Deconstructs the entire LLM answer into individual, verifiable factual claims</text>
+
+    <text x="25" y="142" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Table-Aware Chunking &amp; Span Mapping</text>
+    <text x="35" y="160" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Replicates table headers into chunks; maps exact character spans to answer</text>
+  </g>
+
+  <!-- ==================== RIGHT COLUMN ==================== -->
+
+  <!-- CARD 3: LLM JUDGE -->
+  <g transform="translate(550, 25)" filter="url(#shadow-card)">
+    <rect width="480" height="185" rx="12" fill="#ffffff" stroke="#ddd6fe" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 185 L 0 185 Q 0 185 0 173 Z" fill="#7c3aed" />
+    
+    <rect x="25" y="18" width="55" height="20" rx="10" fill="#f5f3ff" />
+    <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#7c3aed" text-anchor="middle">STEP 2</text>
+    
+    <text x="92" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="700" fill="#0f172a">LLM Judge Cross-Matching</text>
+    <text x="25" y="55" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Crossmatch claim to referenced matched documents</text>
+    
+    <line x1="25" y1="68" x2="455" y2="68" stroke="#f1f5f9" stroke-width="1.5" />
+
+    <!-- Judge Callout Box -->
+    <rect x="25" y="78" width="430" height="66" rx="8" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1" />
+    <text x="37" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#7c3aed">EXACT QUESTION ASKED TO JUDGE:</text>
+    <text x="37" y="115" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#1e293b">1. Is the claim SUPPORTED, CONTRADICTED, or NOT ENOUGH INFO?</text>
+    <text x="37" y="133" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#1e293b">2. Quote exact VERBATIM evidence and cite source document index.</text>
+
+    <text x="25" y="166" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">• Batched evaluation (20 claims/call) with static KV-cache prefix reuse</text>
+  </g>
+
+  <!-- CARD 4: AUDIT OUTPUT -->
+  <g transform="translate(550, 245)" filter="url(#shadow-card)">
+    <rect width="480" height="185" rx="12" fill="#ffffff" stroke="#a7f3d0" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 185 L 0 185 Q 0 185 0 173 Z" fill="#059669" />
+    
+    <rect x="25" y="18" width="55" height="20" rx="10" fill="#ecfdf5" />
+    <text x="52" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#059669" text-anchor="middle">OUTPUT</text>
+    
+    <text x="92" y="33" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="17" font-weight="700" fill="#0f172a">Verification &amp; Hallucination Report</text>
+    <text x="25" y="55" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#047857">Algorithmic evaluation of factual grounding and source integrity</text>
+    
+    <line x1="25" y1="68" x2="455" y2="68" stroke="#f1f5f9" stroke-width="1.5" />
+
+    <text x="25" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Per-Claim Verdicts &amp; Grounding</text>
+    <text x="35" y="112" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">SUPPORTED (clear evidence) | NOT_ENOUGH_INFO (unverified) | CONTRADICTED</text>
+
+    <text x="25" y="142" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#1e293b">• Verbatim Evidence &amp; Hallucination Detection</text>
+    <text x="35" y="160" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Pinpoints exact text quotes in sources; automatically flags hallucinated claims</text>
+  </g>
+</svg>

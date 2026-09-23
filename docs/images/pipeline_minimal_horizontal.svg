@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 160" width="1280" height="160">
+  <defs>
+    <filter id="shadow-min" x="-6%" y="-8%" width="112%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.06" />
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#0f172a" flood-opacity="0.03" />
+    </filter>
+    <marker id="arrow-min" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#94a3b8" />
+    </marker>
+  </defs>
+
+  <!-- Clean Canvas Background -->
+  <rect width="1280" height="160" rx="14" fill="#f8fafc" />
+
+  <!-- Flow connecting arrows -->
+  <line x1="312" y1="80" x2="340" y2="80" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-min)" />
+  <line x1="627" y1="80" x2="655" y2="80" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-min)" />
+  <line x1="942" y1="80" x2="970" y2="80" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#arrow-min)" />
+
+  <!-- ==================== CARD 1: INPUT ==================== -->
+  <g transform="translate(30, 25)" filter="url(#shadow-min)">
+    <rect width="280" height="110" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 110 L 0 110 Q 0 110 0 98 Z" fill="#475569" />
+    
+    <rect x="22" y="16" width="55" height="20" rx="10" fill="#f1f5f9" />
+    <text x="49" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#475569" text-anchor="middle">INPUT</text>
+    
+    <text x="22" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">LLM Answer &amp; Sources</text>
+    <text x="22" y="86" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Generated text with matched EEA documents</text>
+  </g>
+
+  <!-- ==================== CARD 2: EXTRACTION ==================== -->
+  <g transform="translate(345, 25)" filter="url(#shadow-min)">
+    <rect width="280" height="110" rx="12" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 110 L 0 110 Q 0 110 0 98 Z" fill="#4f46e5" />
+    
+    <rect x="22" y="16" width="55" height="20" rx="10" fill="#eef2ff" />
+    <text x="49" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#4f46e5" text-anchor="middle">STEP 1</text>
+    
+    <text x="22" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Claim Extraction</text>
+    <text x="22" y="86" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Deconstructs answer into multiple atomic claims</text>
+  </g>
+
+  <!-- ==================== CARD 3: LLM JUDGE ==================== -->
+  <g transform="translate(660, 25)" filter="url(#shadow-min)">
+    <rect width="280" height="110" rx="12" fill="#ffffff" stroke="#ddd6fe" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 110 L 0 110 Q 0 110 0 98 Z" fill="#7c3aed" />
+    
+    <rect x="22" y="16" width="55" height="20" rx="10" fill="#f5f3ff" />
+    <text x="49" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#7c3aed" text-anchor="middle">STEP 2</text>
+    
+    <text x="22" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">LLM Judge Matching</text>
+    <text x="22" y="86" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Checks if claims are Supported or Contradicted</text>
+  </g>
+
+  <!-- ==================== CARD 4: AUDIT REPORT ==================== -->
+  <g transform="translate(975, 25)" filter="url(#shadow-min)">
+    <rect width="275" height="110" rx="12" fill="#ffffff" stroke="#a7f3d0" stroke-width="1.5" />
+    <path d="M 0 12 Q 0 0 12 0 L 12 0 L 12 110 L 0 110 Q 0 110 0 98 Z" fill="#059669" />
+    
+    <rect x="22" y="16" width="55" height="20" rx="10" fill="#ecfdf5" />
+    <text x="49" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" fill="#059669" text-anchor="middle">OUTPUT</text>
+    
+    <text x="22" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Verification Report</text>
+    <text x="22" y="86" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#64748b">Per-claim verdicts, quotes, and hallucination flags</text>
+  </g>
+</svg>
