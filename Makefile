@@ -136,11 +136,14 @@ list:
 
 # --- Documentation & Presentation ---
 
-## slides: Compile docs/slides.md into PowerPoint (pptx and ppt)
+## slides: Compile presentation slides into PowerPoint (pptx and ppt)
 slides:
 	pandoc docs/slides.md -o docs/slides.pptx --slide-level=2
 	libreoffice --headless --convert-to ppt docs/slides.pptx --outdir docs/
-	@echo "Generated docs/slides.pptx and docs/slides.ppt"
+	cd docs && pandoc slides_2slides.md -o slides_2slides.pptx --slide-level=2
+	libreoffice --headless --convert-to ppt docs/slides_2slides.pptx --outdir docs/
+	@echo "Generated docs/slides.pptx, docs/slides_2slides.pptx, and corresponding .ppt files"
+
 
 # --- Maintenance ---
 

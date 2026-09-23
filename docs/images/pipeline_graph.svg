@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340">
+  <defs>
+    <!-- Drop Shadow Filter -->
+    <filter id="card-shadow" x="-5%" y="-5%" width="112%" height="116%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.08" />
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.04" />
+    </filter>
+
+    <!-- Arrow Marker -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#94a3b8" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="340" rx="16" fill="#f8fafc" />
+
+  <!-- Flow connecting lines -->
+  <line x1="230" y1="170" x2="270" y2="170" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrow)" />
+  <line x1="490" y1="170" x2="530" y2="170" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrow)" />
+  <line x1="750" y1="170" x2="790" y2="170" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrow)" />
+  <line x1="1010" y1="170" x2="1050" y2="170" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrow)" />
+
+  <!-- ==================== CARD 1: INPUT ==================== -->
+  <g transform="translate(30, 45)" filter="url(#card-shadow)">
+    <rect width="200" height="250" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5" />
+    <!-- Top accent bar -->
+    <path d="M 0 14 Q 0 0 14 0 L 186 0 Q 200 0 200 14 L 200 8 L 0 8 Z" fill="#475569" />
+    
+    <rect x="20" y="24" width="60" height="22" rx="11" fill="#f1f5f9" />
+    <text x="50" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#475569" text-anchor="middle">INPUT</text>
+    
+    <text x="20" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">RAG Output &amp;</text>
+    <text x="20" y="93" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Sources</text>
+    
+    <rect x="20" y="112" width="160" height="1" fill="#f1f5f9" />
+
+    <text x="20" y="135" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#334155">• Generated Answer</text>
+    <text x="28" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Prose or Markdown</text>
+    <text x="28" y="169" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">comparison tables</text>
+
+    <text x="20" y="197" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#334155">• Cited Documents</text>
+    <text x="28" y="215" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Official PDFs &amp; HTML</text>
+    <text x="28" y="231" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">environmental reports</text>
+  </g>
+
+  <!-- ==================== CARD 2: CHUNKED EXTRACTION ==================== -->
+  <g transform="translate(290, 45)" filter="url(#card-shadow)">
+    <rect width="200" height="250" rx="14" fill="#ffffff" stroke="#e0e7ff" stroke-width="1.5" />
+    <!-- Top accent bar -->
+    <path d="M 0 14 Q 0 0 14 0 L 186 0 Q 200 0 200 14 L 200 8 L 0 8 Z" fill="#4f46e5" />
+    
+    <rect x="20" y="24" width="60" height="22" rx="11" fill="#eef2ff" />
+    <text x="50" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#4f46e5" text-anchor="middle">STEP 1</text>
+    
+    <text x="20" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Chunked Claim</text>
+    <text x="20" y="93" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Extraction</text>
+    
+    <rect x="20" y="112" width="160" height="1" fill="#f1f5f9" />
+
+    <text x="20" y="135" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#4338ca">Table-Aware Split</text>
+    <text x="20" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Replicates headers in</text>
+    <text x="20" y="169" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">every chunk; no cutoff</text>
+
+    <text x="20" y="197" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#4338ca">Span Deduplication</text>
+    <text x="20" y="215" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Maps offsets to master</text>
+    <text x="20" y="231" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">answer coordinates</text>
+  </g>
+
+  <!-- ==================== CARD 3: BATCH VERIFICATION ==================== -->
+  <g transform="translate(550, 45)" filter="url(#card-shadow)">
+    <rect width="200" height="250" rx="14" fill="#ffffff" stroke="#ede9fe" stroke-width="1.5" />
+    <!-- Top accent bar -->
+    <path d="M 0 14 Q 0 0 14 0 L 186 0 Q 200 0 200 14 L 200 8 L 0 8 Z" fill="#7c3aed" />
+    
+    <rect x="20" y="24" width="60" height="22" rx="11" fill="#f5f3ff" />
+    <text x="50" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#7c3aed" text-anchor="middle">STEP 2</text>
+    
+    <text x="20" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">KV-Cache Batch</text>
+    <text x="20" y="93" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Verification</text>
+    
+    <rect x="20" y="112" width="160" height="1" fill="#f1f5f9" />
+
+    <text x="20" y="135" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Prefix Reuse</text>
+    <text x="20" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Static docs placed at</text>
+    <text x="20" y="169" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">prompt start for cache reuse</text>
+
+    <text x="20" y="197" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#6d28d9">Fast Claims Batching</text>
+    <text x="20" y="215" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Checks 20 claims at once;</text>
+    <text x="20" y="231" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">drops latency by &gt;70%</text>
+  </g>
+
+  <!-- ==================== CARD 4: EVIDENCE ALIGNMENT ==================== -->
+  <g transform="translate(810, 45)" filter="url(#card-shadow)">
+    <rect width="200" height="250" rx="14" fill="#ffffff" stroke="#ccfbf1" stroke-width="1.5" />
+    <!-- Top accent bar -->
+    <path d="M 0 14 Q 0 0 14 0 L 186 0 Q 200 0 200 14 L 200 8 L 0 8 Z" fill="#0d9488" />
+    
+    <rect x="20" y="24" width="60" height="22" rx="11" fill="#f0fdfa" />
+    <text x="50" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#0d9488" text-anchor="middle">STEP 3</text>
+    
+    <text x="20" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Resilient Evidence</text>
+    <text x="20" y="93" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Span Locator</text>
+    
+    <rect x="20" y="112" width="160" height="1" fill="#f1f5f9" />
+
+    <text x="20" y="135" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#0f766e">4-Stage Hierarchy</text>
+    <text x="20" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Quote strip → Exact →</text>
+    <text x="20" y="169" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">\s+ regex → Fuzzy alignment</text>
+
+    <text x="20" y="197" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#0f766e">Noise Tolerant</text>
+    <text x="20" y="215" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Bridges PDF linebreaks,</text>
+    <text x="20" y="231" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">hyphenation &amp; smart quotes</text>
+  </g>
+
+  <!-- ==================== CARD 5: OUTPUT / UI ==================== -->
+  <g transform="translate(1070, 45)" filter="url(#card-shadow)">
+    <rect width="180" height="250" rx="14" fill="#ffffff" stroke="#d1fae5" stroke-width="1.5" />
+    <!-- Top accent bar -->
+    <path d="M 0 14 Q 0 0 14 0 L 166 0 Q 180 0 180 14 L 180 8 L 0 8 Z" fill="#059669" />
+    
+    <rect x="20" y="24" width="60" height="22" rx="11" fill="#ecfdf5" />
+    <text x="50" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#059669" text-anchor="middle">OUTPUT</text>
+    
+    <text x="20" y="72" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Score &amp; Volto</text>
+    <text x="20" y="93" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Highlights</text>
+    
+    <rect x="20" y="112" width="140" height="1" fill="#f1f5f9" />
+
+    <text x="20" y="135" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#047857">0–10 Score Badge</text>
+    <text x="20" y="153" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">Calibrated trust rating</text>
+    <text x="20" y="169" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">(e.g., 8.5/10 Good)</text>
+
+    <text x="20" y="197" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#047857">Inline UI Colors</text>
+    <text x="20" y="215" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">🟢 Verified + Tooltips</text>
+    <text x="20" y="231" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748b">🟡 Unverified | 🔴 Contra</text>
+  </g>
+</svg>
