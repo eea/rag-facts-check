@@ -6,6 +6,7 @@
 * [CLI](/guides/cli.md) — Ad-hoc fact-checking from the command line.
 * [Web Service](/guides/web-service.md) — FastAPI endpoints, request/response schemas, and integration guide.
 * [Configuration](/guides/configuration.md) — Tuning the checker: token budgets, retrieval, consistency runs.
+* [Presentation Deck](/presentation.md) — 10-minute slide deck with full speaker notes and timing guide.
 
 ## Architecture
 
