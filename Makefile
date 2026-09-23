@@ -139,11 +139,12 @@ list:
 ## slides: Compile presentation slides and images into PowerPoint (pptx and ppt)
 slides:
 	@if command -v google-chrome >/dev/null 2>&1; then \
-		google-chrome --headless --disable-gpu --force-device-scale-factor=2 --screenshot=docs/images/pipeline_graph.png --window-size=960,260 file://$(CURDIR)/docs/images/pipeline_graph.svg 2>/dev/null; \
+		google-chrome --headless --disable-gpu --force-device-scale-factor=2 --screenshot=docs/images/pipeline_graph.png --window-size=960,300 file://$(CURDIR)/docs/images/pipeline_graph.svg 2>/dev/null; \
 	fi
-	pandoc docs/slides.md -o docs/slides.pptx --slide-level=2
+	pandoc docs/slides.md -o docs/slides.pptx --slide-level=2 --lua-filter=scripts/small_filter.lua
+	cd docs && pandoc slides_2slides.md -o slides_2slides.pptx --slide-level=2 --lua-filter=../scripts/small_filter.lua
+	$(PYTHON) scripts/postprocess_pptx.py docs/slides.pptx docs/slides_2slides.pptx
 	libreoffice --headless --convert-to ppt docs/slides.pptx --outdir docs/
-	cd docs && pandoc slides_2slides.md -o slides_2slides.pptx --slide-level=2
 	libreoffice --headless --convert-to ppt docs/slides_2slides.pptx --outdir docs/
 	@echo "Generated docs/slides.pptx, docs/slides_2slides.pptx, and corresponding .ppt files"
 

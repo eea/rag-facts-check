@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pipeline Graph Preview — RAG Facts Check</title>
+  <title>Presentation &amp; Pipeline Previews — RAG Facts Check</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -24,6 +24,28 @@
       margin-top: 0;
       margin-bottom: 24px;
       font-size: 15px;
+    }
+    .download-bar {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 14px 20px;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .download-btn {
+      background: #2563eb;
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .download-btn:hover {
+      background: #1d4ed8;
     }
     .preview-card {
       background: #1e293b;
@@ -95,39 +117,127 @@
       letter-spacing: 0.05em;
       margin-bottom: 20px;
     }
+    .speaker-notes {
+      margin-top: 18px;
+      background: #0b1120;
+      border: 1px solid #334155;
+      border-left: 4px solid #38bdf8;
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    .speaker-notes-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .speaker-notes-content {
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .speaker-notes-content p {
+      margin: 0 0 8px 0;
+    }
+    .speaker-notes-content ol, .speaker-notes-content ul {
+      margin: 0;
+      padding-left: 22px;
+    }
+    .speaker-notes-content li {
+      margin-bottom: 6px;
+    }
+    .speaker-notes-content li:last-child {
+      margin-bottom: 0;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>RAG Facts Check — Pipeline Graph Previews</h1>
-    <p class="lead">Live preview server on port 8100. Refresh this page to view updates in real time without git commit/push.</p>
+    <h1>RAG Facts Check — 2-Slide Deck &amp; Pipeline Previews</h1>
+    <p class="lead">Live preview server on port 8100. Inspect rendered PowerPoint slides and standalone graphics in real time.</p>
 
-    <h2 class="section-header">🎯 Minimalist Format (Title + Label + Single Line, No Bullets)</h2>
+    <div class="download-bar">
+      <span><strong>PowerPoint Files:</strong></span>
+      <a class="download-btn" href="/docs/slides_2slides.pptx" download>📥 Download slides_2slides.pptx</a>
+      <a class="download-btn" style="background:#475569;" href="/docs/slides_2slides.ppt" download>📥 Download slides_2slides.ppt</a>
+      <a class="download-btn" style="background:#059669;" href="/docs/slides_2slides.md" target="_blank">📄 View Markdown Source</a>
+    </div>
 
-    <!-- MINIMAL HORIZONTAL -->
+    <h2 class="section-header">🎬 Simplified 2-Slide Deck (Slide Previews)</h2>
+
+    <!-- SLIDE 1 PREVIEW -->
     <div class="preview-card highlight">
       <div class="preview-header">
-        <span class="preview-title">1. Minimal Horizontal Flow (Single Row)</span>
-        <span class="preview-badge new">HORIZONTAL MINIMAL</span>
+        <span class="preview-title">Slide 1: Verification Pipeline</span>
+        <span class="preview-badge new">SLIDE 1</span>
       </div>
       <div class="preview-desc">
-        Each card: Label pill + Bold Title + Single-line description. No bullet points, clean and simple.
+        Clean presentation of the verification architecture. Standalone 2-column pipeline graphic with generous whitespace and zero duplicate bullet clutter.
       </div>
-      <img src="/docs/images/pipeline_minimal_horizontal.png" alt="Minimal Horizontal Pipeline Graph" />
+      <img src="/docs/images/slide_2slides_preview-2.png" alt="Slide 1 Preview" />
       <div class="links">
-        <a href="/docs/images/pipeline_minimal_horizontal.png" target="_blank">🔍 Open PNG Full-Res (2560 × 320)</a>
-        <a href="/docs/images/pipeline_minimal_horizontal.svg" target="_blank">📐 Open Vector SVG</a>
+        <a href="/docs/images/slide_2slides_preview-2.png" target="_blank">🔍 Open Slide 1 Full-Res</a>
+      </div>
+
+      <div class="speaker-notes">
+        <div class="speaker-notes-title">🎙️ Speaker Notes (Slide 1)</div>
+        <div class="speaker-notes-content">
+          <p>When the chatbot generates an answer from European environmental documents, RAG Facts Check audits every claim in real time:</p>
+          <ol>
+            <li><strong>Ingest:</strong> Ingests the LLM answer alongside matched source documents.</li>
+            <li><strong>Extract:</strong> Decomposes the answer into atomic claims.</li>
+            <li><strong>Judge:</strong> Crossmatches each claim against referenced documents using an LLM judge.</li>
+            <li><strong>Report:</strong> Produces grounded verification verdicts, direct evidence citations, and hallucination flags.</li>
+          </ol>
+        </div>
       </div>
     </div>
 
-    <!-- MINIMAL 2-COLUMN -->
+    <!-- SLIDE 2 PREVIEW -->
     <div class="preview-card highlight">
       <div class="preview-header">
-        <span class="preview-title">2. Minimal 2-Column Grid (Compact)</span>
-        <span class="preview-badge new">2-COLUMN MINIMAL</span>
+        <span class="preview-title">Slide 2: Claim-Level Verification &amp; Evidence</span>
+        <span class="preview-badge new">SLIDE 2</span>
       </div>
       <div class="preview-desc">
-        Same ultra-simple format arranged in 2 balanced columns (Left: Ingest → Extract, Right: Judge → Report).
+        Verification and grounding capabilities (claim extraction, source grounding, verbatim evidence, hallucination detection, quality score) paired with a clean placeholder frame for the Chatbot UI screenshot.
+      </div>
+      <img src="/docs/images/slide_2slides_preview-3.png" alt="Slide 2 Preview" />
+      <div class="links">
+        <a href="/docs/images/slide_2slides_preview-3.png" target="_blank">🔍 Open Slide 2 Full-Res</a>
+      </div>
+
+      <div class="speaker-notes">
+        <div class="speaker-notes-title">🎙️ Speaker Notes (Slide 2)</div>
+        <div class="speaker-notes-content">
+          <p>The fact-checking engine provides automated verification for enterprise RAG:</p>
+          <ul>
+            <li><strong>Claim Extraction:</strong> Extracts atomic factual claims from generated chatbot answers.</li>
+            <li><strong>Source Grounding:</strong> Checks each claim against referenced source documents using an LLM judge.</li>
+            <li><strong>Verbatim Evidence:</strong> Locates verbatim evidence spans and character offsets in the source text.</li>
+            <li><strong>Hallucination Detection:</strong> Accurately detects hallucinations by flagging statements that lack document grounding (<em>Not Enough Info</em>).</li>
+            <li><strong>Quality Score:</strong> Produces a calibrated quality score reflecting overall answer trustworthiness.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <h2 class="section-header">🎯 Standalone Pipeline Graphic (Used in Slide 1)</h2>
+
+    <!-- MINIMAL 2-COLUMN -->
+    <div class="preview-card">
+      <div class="preview-header">
+        <span class="preview-title">Minimal 2-Column Grid (Compact)</span>
+        <span class="preview-badge">ACTIVE GRAPHIC</span>
+      </div>
+      <div class="preview-desc">
+        Each card: Label pill + Bold Title + Single-line description. Arranged in 2 balanced columns with downward arrows and bridge connector.
       </div>
       <img src="/docs/images/pipeline_minimal_2col.png" alt="Minimal 2-Column Pipeline Graph" />
       <div class="links">
@@ -137,27 +247,16 @@
     </div>
 
     <div class="divider"></div>
-    <h2 class="section-header">📂 Earlier Versions (Retained for Reference)</h2>
+    <h2 class="section-header">📂 Earlier Variants (Retained for Reference)</h2>
 
-    <!-- PREVIOUS SIMPLIFIED 2-COL -->
+    <!-- MINIMAL HORIZONTAL -->
     <div class="preview-card">
       <div class="preview-header">
-        <span class="preview-title">Previous 2-Column (with 2 bullet points)</span>
+        <span class="preview-title">Minimal Horizontal Flow (Single Row)</span>
       </div>
-      <img src="/docs/images/pipeline_2col_simple.png" alt="Previous 2-Column Simple" />
+      <img src="/docs/images/pipeline_minimal_horizontal.png" alt="Minimal Horizontal Pipeline Graph" />
       <div class="links">
-        <a href="/docs/images/pipeline_2col_simple.png" target="_blank">🔍 Open PNG</a>
-      </div>
-    </div>
-
-    <!-- PREVIOUS DETAILED 2-COL -->
-    <div class="preview-card">
-      <div class="preview-header">
-        <span class="preview-title">Previous 2-Column (Detailed with Callout Box)</span>
-      </div>
-      <img src="/docs/images/pipeline_2col_v1.png" alt="Detailed 2-Column Pipeline Graph" />
-      <div class="links">
-        <a href="/docs/images/pipeline_2col_v1.png" target="_blank">🔍 Open PNG</a>
+        <a href="/docs/images/pipeline_minimal_horizontal.png" target="_blank">🔍 Open PNG</a>
       </div>
     </div>
   </div>
