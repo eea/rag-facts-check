@@ -134,6 +134,14 @@ check-all-v:
 list:
 	@echo "Datasets:"; ls -1 $(DATASETS)/*.json 2>/dev/null | xargs -I{} basename {} .json
 
+# --- Documentation & Presentation ---
+
+## slides: Compile docs/slides.md into PowerPoint (pptx and ppt)
+slides:
+	pandoc docs/slides.md -o docs/slides.pptx --slide-level=2
+	libreoffice --headless --convert-to ppt docs/slides.pptx --outdir docs/
+	@echo "Generated docs/slides.pptx and docs/slides.ppt"
+
 # --- Maintenance ---
 
 ## clean: Remove all build artifacts and caches
@@ -143,3 +151,4 @@ clean:
 	find . -type f -name '*.pyc' -delete
 	rm -f $(DATASETS)/*_generated.jsonl $(DATASETS)/all_*.jsonl
 	rm -f report.json
+
