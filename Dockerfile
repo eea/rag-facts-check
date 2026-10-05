@@ -34,7 +34,7 @@ FROM base AS runtime
 
 # Install dependencies first (layer caching)
 COPY pyproject.toml ./
-RUN pip install --no-deps -e ".[server]"
+RUN pip install -e ".[server]"
 
 # Copy application code
 COPY rag_facts_check/ ./rag_facts_check/
