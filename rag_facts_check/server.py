@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .llm import reasoning_disable_params
 from .spans import find_evidence_span_in_doc, merge_overlapping_spans
 
 # Configure logging for development
@@ -48,6 +49,7 @@ def _load_env() -> dict[str, str]:
         "LLM_MAX_TOKENS",
         "LLM_TIMEOUT",
         "LLM_EXTRA_BODY",
+        "LLM_DISABLE_REASONING",
     ):
         value = os.environ.get(key)
         if value:
@@ -114,6 +116,36 @@ class HalloumiRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _build_extra_body(env: dict[str, str]) -> dict:
+    """Merge reasoning-control and provider-specific request parameters.
+
+    ``LLM_DISABLE_REASONING`` is the obvious knob (``1`` turns chain-of-thought
+    off, roughly halving judge latency); ``LLM_EXTRA_BODY`` remains available
+    for endpoint-specific tuning and wins on conflicting keys.
+    """
+    params = reasoning_disable_params(env.get("LLM_DISABLE_REASONING"))
+
+    raw = env.get("LLM_EXTRA_BODY", "") or "{}"
+    try:
+        extra_body = json.loads(raw)
+    except json.JSONDecodeError:
+        log.warning("LLM_EXTRA_BODY is not valid JSON, ignoring")
+        extra_body = {}
+    if not isinstance(extra_body, dict):
+        log.warning(
+            "LLM_EXTRA_BODY must be a JSON object, got %s — ignoring", type(extra_body).__name__
+        )
+        extra_body = {}
+
+    if params:
+        log.info(
+            "reasoning disabled (LLM_DISABLE_REASONING=%s) → %s",
+            env.get("LLM_DISABLE_REASONING"),
+            params,
+        )
+    return {**params, **extra_body}
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
@@ -154,11 +186,7 @@ def create_app() -> FastAPI:
             temperature = float(env.get("LLM_TEMPERATURE", "0.1"))
             max_tokens = int(env.get("LLM_MAX_TOKENS", "1024"))
             timeout = float(env.get("LLM_TIMEOUT", "120"))
-            try:
-                extra_body = json.loads(env.get("LLM_EXTRA_BODY", "{}"))
-            except json.JSONDecodeError:
-                log.warning("LLM_EXTRA_BODY is not valid JSON, ignoring")
-                extra_body = {}
+            extra_body = _build_extra_body(env)
 
             api_url = api_base.rstrip("/") + "/chat/completions"
             _llm = AsyncAPILLM(

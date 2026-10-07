@@ -300,3 +300,30 @@ curl ... -d '{"model":"edenai/qwen3.8-27b","messages":[...],"max_tokens":16384,
 curl ... -d '{"model":"edenai/qwen3.8-27b","messages":[...],"max_tokens":16384,
               "temperature":0.1,"extra_body":{"reasoning_effort":"disable"}}'
 ```
+
+## 7. Configuration knob: `LLM_DISABLE_REASONING` (added 2026-10-07)
+
+The strategy above is now a first-class environment variable, so it no longer
+depends on remembering the right `LLM_EXTRA_BODY` JSON per backend:
+
+```bash
+LLM_DISABLE_REASONING=1               # chat_template_kwargs.enable_thinking=false (vLLM, llama.cpp)
+LLM_DISABLE_REASONING=reasoning_effort # reasoning_effort="none" (OpenAI-style endpoints)
+LLM_DISABLE_REASONING=both             # both, for gateways that only read one of them
+```
+
+`rag_facts_check.llm.reasoning_disable_params()` maps the value to request
+parameters; `server._build_extra_body()` merges it with `LLM_EXTRA_BODY`
+(the explicit JSON wins on conflicting keys). The merged dict is passed to
+`AsyncAPILLM.extra_body` **and** injected into every
+`openai_client.chat.completions.create()` call, so the instructor/atomic-agents
+path is covered too. `APILLM` (sync) gained the same `extra_body` support for
+`scripts/check_dataset.py`.
+
+Measured on the local llama.cpp endpoint (`unsloth/Qwen3.8-27B-GGUF:Q8_0`,
+`artifacts/tmp_reasoning_e2e_timing.py`), one judge call: **4.2s → 2.0s**
+(446 → 196 completion tokens, 1167 → 0 reasoning chars), and a full
+`/halloumi/generate` (4 claims, 2 sources): **16.5s → 7.0s**.
+
+EdenAI routes still ignore both parameters (see §3), so on `llmgw`/EdenAI keep
+using `reasoning: {"effort": "minimal"}` via `LLM_EXTRA_BODY`.

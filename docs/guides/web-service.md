@@ -33,7 +33,13 @@ LLM_API_BASE=http://localhost:4002/v1
 LLM_API_KEY=not-needed
 LLM_MODEL=gemma
 LLM_TEMPERATURE=0.1
+# Reasoning models spend most of a judge call on chain-of-thought. Turn it off:
+LLM_DISABLE_REASONING=1
 ```
+
+`LLM_DISABLE_REASONING` accepts `1` (default strategy: `chat_template_kwargs.enable_thinking=false`,
+honoured by vLLM and llama.cpp server), `reasoning_effort` (`reasoning_effort: "none"`), or `both`.
+`LLM_EXTRA_BODY` still works for endpoint-specific tuning and overrides the flag on conflicting keys.
 
 ## Endpoints
 

@@ -106,6 +106,8 @@ The CLI reads LLM configuration from a `.env` file in the project root (or envir
 | `LLM_API_BASE` | `http://localhost:4002/v1` | Base URL for the LLM API |
 | `LLM_MODEL` | `gemma` | Model name |
 | `LLM_API_KEY` | `not-needed` | API key (if required) |
+| `LLM_DISABLE_REASONING` | *(off)* | `1` = default strategy, or `chat_template` / `reasoning_effort` / `both` — turns chain-of-thought off (~2x faster judge calls) |
+| `LLM_EXTRA_BODY` | `{}` | Extra JSON merged into every request; wins over `LLM_DISABLE_REASONING` on conflicts |
 
 The CLI always uses a live LLM — there is no mock mode. For testing without a real LLM, use the pytest test suite instead.
 

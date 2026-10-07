@@ -34,6 +34,76 @@ except ImportError:
     _HAS_HTTPX = False
 
 
+# ---------------------------------------------------------------------------
+# Reasoning (thinking) control
+# ---------------------------------------------------------------------------
+
+# Parameters that turn a reasoning model's chain-of-thought off. Sending the
+# thinking tokens costs roughly 2x the wall-clock time of a judge call, and the
+# fact-checking prompts already impose their own step-by-step structure.
+_CHAT_TEMPLATE_PARAMS = {"chat_template_kwargs": {"enable_thinking": False}}
+_REASONING_EFFORT_PARAMS = {"reasoning_effort": "none"}
+
+_REASONING_ALIASES = {
+    "chat_template": "chat_template",
+    "chat_template_kwargs": "chat_template",
+    "enable_thinking": "chat_template",
+    "thinking": "chat_template",
+    "reasoning_effort": "reasoning_effort",
+    "effort": "reasoning_effort",
+    "both": "both",
+    "all": "both",
+}
+
+_FALSY = {"", "0", "false", "no", "off", "none"}
+
+
+def reasoning_disable_params(value: str | None) -> dict:
+    """Translate ``LLM_DISABLE_REASONING`` into extra request parameters.
+
+    Supported values (case-insensitive):
+
+    - ``1`` / ``true`` / ``yes`` / ``on`` → the default strategy
+      (``chat_template_kwargs.enable_thinking=false``, honoured by vLLM and
+      llama.cpp server)
+    - ``chat_template`` / ``thinking`` → only the chat-template parameter
+    - ``reasoning_effort`` → only ``reasoning_effort: "none"`` (OpenAI-style)
+    - ``both`` → both parameters, for gateways that only look at one of them
+    - anything else (``0``, ``false``, empty) → no parameters
+
+    Providers that do not understand a parameter generally ignore it (EdenAI
+    does), but a strict endpoint may reject it — hence the explicit strategy
+    switch instead of always sending both.
+
+    Args:
+        value: Raw environment variable value.
+
+    Returns:
+        Dictionary to merge into the request payload (empty when disabled).
+    """
+    raw = (value or "").strip().lower()
+    if raw in _FALSY:
+        return {}
+
+    if raw in _REASONING_ALIASES:
+        strategy = _REASONING_ALIASES[raw]
+    elif raw in {"1", "true", "yes", "y", "on", "disable", "disabled"}:
+        strategy = "chat_template"
+    else:
+        log.warning(
+            "LLM_DISABLE_REASONING=%r is not recognised; reasoning left on. "
+            "Use 1, chat_template, reasoning_effort or both.",
+            value,
+        )
+        return {}
+
+    if strategy == "chat_template":
+        return dict(_CHAT_TEMPLATE_PARAMS)
+    if strategy == "reasoning_effort":
+        return dict(_REASONING_EFFORT_PARAMS)
+    return {**_CHAT_TEMPLATE_PARAMS, **_REASONING_EFFORT_PARAMS}
+
+
 class LLM(ABC):
     """Abstract base class for LLM backends.
 
@@ -163,6 +233,7 @@ class APILLM(LLM):
         max_new_tokens: int = 512,
         temperature: float = 0.1,
         chat_mode: bool = False,
+        extra_body: dict | None = None,
     ):
         if not _HAS_REQUESTS:
             raise ImportError("requests is required for APILLM")
@@ -172,6 +243,7 @@ class APILLM(LLM):
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
         self.chat_mode = chat_mode
+        self.extra_body = extra_body or {}
 
     def generate(
         self,
@@ -203,6 +275,10 @@ class APILLM(LLM):
             }
         if self.model_name:
             payload["model"] = self.model_name
+
+        # Provider-specific parameters (e.g. reasoning control) must not
+        # override the call-level values computed above.
+        payload = {**self.extra_body, **payload}
 
         response = requests.post(self.api_url, json=payload, headers=headers)
         response.raise_for_status()
