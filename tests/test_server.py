@@ -67,6 +67,117 @@ class TestCheckRequestValidation:
         assert response.status_code == 422
 
 
+class TestHalloumiSourceOffsets:
+    """`/halloumi/generate` must keep source text verbatim.
+
+    The frontend computes highlight offsets by concatenating the same source
+    texts, so stripping a source on the server shifts every segment that comes
+    after it — visible as wrong highlights once a claim cites several passages.
+    """
+
+    ANSWER = "Alpha claim."
+    SOURCES = [
+        {"text": "   alpha beta gamma", "title": "S1", "source_type": "file"},
+        {"text": "\n\ngamma delta epsilon", "title": "S2", "source_type": "web"},
+    ]
+    QUOTES = ["alpha beta", "gamma delta"]
+
+    @pytest.fixture
+    def stub_client(self, monkeypatch):
+        """App whose checker is replaced by a deterministic stub (no LLM)."""
+        import rag_facts_check.checker as checker_module
+        from rag_facts_check.models import (
+            CheckReport,
+            Claim,
+            EvidenceSpan,
+            Span,
+            VerificationResult,
+        )
+
+        class StubChecker:
+            seen_documents = None
+
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def check(self, answer, documents, batch_size=None):
+                StubChecker.seen_documents = documents
+                spans = []
+                for quote in self.quotes:
+                    for i, doc in enumerate(documents):
+                        pos = doc["text"].find(quote)
+                        if pos >= 0:
+                            spans.append(
+                                EvidenceSpan(
+                                    quote=quote,
+                                    start=pos,
+                                    end=pos + len(quote),
+                                    document_index=i,
+                                )
+                            )
+                            break
+                return CheckReport(
+                    answer=answer,
+                    answer_score=10.0,
+                    claims=[Claim(text="Alpha claim.", index=1, span=Span(0, 12))],
+                    results=[
+                        VerificationResult(
+                            claim="Alpha claim.",
+                            claim_index=1,
+                            verdict="supported",
+                            confidence=0,
+                            evidence=list(self.quotes),
+                            explanation="One passage per source.",
+                            evidence_spans=spans,
+                        )
+                    ],
+                )
+
+        StubChecker.quotes = self.QUOTES
+        monkeypatch.setattr(checker_module, "RAGFactsChecker", StubChecker)
+        self.stub = StubChecker
+        return TestClient(create_app())
+
+    def test_sources_reach_the_checker_verbatim(self, stub_client):
+        response = stub_client.post(
+            "/halloumi/generate",
+            json={"answer": self.ANSWER, "sources": self.SOURCES},
+        )
+        assert response.status_code == 200
+        assert [doc["text"] for doc in self.stub.seen_documents] == [
+            src["text"] for src in self.SOURCES
+        ]
+
+    def test_segments_line_up_with_unstripped_sources(self, stub_client):
+        response = stub_client.post(
+            "/halloumi/generate",
+            json={"answer": self.ANSWER, "sources": self.SOURCES},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        joined = "".join(src["text"] for src in self.SOURCES)
+        segment_ids = data["claims"][0]["segmentIds"]
+        assert segment_ids == ["0", "1"]
+        quotes = [
+            joined[data["segments"][sid]["startOffset"] : data["segments"][sid]["endOffset"]]
+            for sid in segment_ids
+        ]
+        assert quotes == self.QUOTES
+
+    def test_blank_sources_are_skipped_without_breaking_offsets(self, stub_client):
+        sources = [{"text": "   \n "}, {"text": "   alpha beta gamma"}]
+        response = stub_client.post(
+            "/halloumi/generate",
+            json={"answer": self.ANSWER, "sources": sources},
+        )
+        data = response.json()
+        segment_ids = data["claims"][0]["segmentIds"]
+        assert segment_ids
+        seg = data["segments"][segment_ids[0]]
+        assert sources[1]["text"][seg["startOffset"] : seg["endOffset"]] == "alpha beta"
+
+
 class TestCheckEndpoint:
     """Tests for the /check endpoint with live LLM.
 

@@ -434,7 +434,7 @@ class ClaimVerifier:
     def __init__(
         self,
         llm: LLM,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,  # verification output now carries up to 3 quotes
         max_docs_chars: int = 100000,
         max_chars_per_doc: int = 10000,
         num_consistency_runs: int = 1,
@@ -925,7 +925,7 @@ class RAGFactsChecker:
         self,
         llm: LLM,
         max_claims: int | None = None,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 1024,  # verification output now carries up to 3 quotes
         max_extraction_tokens: int | None = None,
         max_docs_chars: int = 100000,
         max_chars_per_doc: int = 10000,

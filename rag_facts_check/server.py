@@ -152,7 +152,7 @@ def create_app() -> FastAPI:
             api_key = env.get("LLM_API_KEY")
             model = env.get("LLM_MODEL", "gemma")
             temperature = float(env.get("LLM_TEMPERATURE", "0.1"))
-            max_tokens = int(env.get("LLM_MAX_TOKENS", "512"))
+            max_tokens = int(env.get("LLM_MAX_TOKENS", "1024"))
             timeout = float(env.get("LLM_TIMEOUT", "120"))
             try:
                 extra_body = json.loads(env.get("LLM_EXTRA_BODY", "{}"))
@@ -236,21 +236,20 @@ def create_app() -> FastAPI:
         """
         checker = _get_checker()
 
-        # Normalize sources: plain strings or structured dicts -> document dicts
+        # Normalize sources: plain strings or structured dicts -> document dicts.
+        # Source text is kept verbatim (never stripped): the frontend computes its
+        # highlight offsets by concatenating the same texts, so any character we
+        # drop here shifts every segment of every source after it.
         documents = []
         raw_texts: list[str] = []  # for _to_halloumi_format span mapping
         for i, src in enumerate(request.sources):
+            text = src if isinstance(src, str) else (src.text or "")
+            if not text.strip():
+                log.debug("halloumi/generate: skipping empty source %d", i)
+                continue
             if isinstance(src, str):
-                text = src.strip()
-                if not text:
-                    continue
                 documents.append({"doc_id": f"doc_{i + 1}", "text": text})
-                raw_texts.append(text)
             else:
-                # Structured HalloumiSource
-                text = src.text.strip() if src.text else ""
-                if not text:
-                    continue
                 doc: dict[str, str | None] = {
                     "doc_id": f"doc_{i + 1}",
                     "text": text,
@@ -258,7 +257,7 @@ def create_app() -> FastAPI:
                 if src.title:
                     doc["title"] = src.title
                 documents.append(doc)
-                raw_texts.append(text)
+            raw_texts.append(text)
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
