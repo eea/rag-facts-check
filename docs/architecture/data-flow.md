@@ -165,15 +165,17 @@ When chatbot answers exceed ~2,500 characters—particularly structured response
   ```
   By positioning the static document context before the claims, backends supporting prefix caching (like `llama.cpp` and `vLLM`) cache the large document prompt tokens. Subsequent batches only process the new claim tokens.
 - **Document Identity Preservation**:
-  The verification prompt requests the 0-based document index where evidence was found:
+  The verification prompt requests the 0-based document index of the **first** evidence quote:
   ```json
   {
     "verdict": "SUPPORTED",
-    "evidence": "European Climate Law sets a binding target...",
+    "evidence": ["European Climate Law sets a binding target...", "Member states must report annually..."],
     "document_index": 0
   }
   ```
-  `VerificationResult.document_index` preserves this value throughout the pipeline, preventing costly and ambiguous text re-searches.
+  `VerificationResult.evidence` keeps every quote (max 3) and `document_index` seeds the
+  first lookup; each quote is then located independently, so evidences coming from
+  different documents are mapped correctly.
 
 ---
 

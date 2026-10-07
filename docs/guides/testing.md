@@ -84,7 +84,7 @@ def custom_mock_llm():
     async def _respond(prompt: str, **kwargs) -> str:
         if "Extract atomic factual claims" in prompt:
             return '[{"claim": "Test claim", "original_text": "verbatim text"}]'
-        return '{"verdict": "SUPPORTED", "evidence": "verbatim text", "document_index": 0}'
+        return '{"verdict": "SUPPORTED", "evidence": ["verbatim text"], "document_index": 0}'
     llm.generate = AsyncMock(side_effect=_respond)
     return llm
 

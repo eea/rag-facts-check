@@ -5,7 +5,13 @@ Covers Claim, VerificationResult, CheckReport, and the to_dict()
 serialization method.
 """
 
-from rag_facts_check.models import CheckReport, Claim, VerificationResult, score_label
+from rag_facts_check.models import (
+    CheckReport,
+    Claim,
+    EvidenceSpan,
+    VerificationResult,
+    score_label,
+)
 
 
 class TestClaim:
@@ -41,15 +47,54 @@ class TestVerificationResult:
             claim_index=1,
             verdict="supported",
             confidence=95,
-            evidence="Paris is the capital of France.",
+            evidence=["Paris is the capital of France."],
             explanation="Document explicitly states this.",
         )
         assert result.claim == "Paris is the capital of France."
         assert result.claim_index == 1
         assert result.verdict == "supported"
         assert result.confidence == 95
-        assert result.evidence == "Paris is the capital of France."
+        assert result.evidence == ["Paris is the capital of France."]
         assert result.explanation == "Document explicitly states this."
+
+    def test_result_evidence_defaults_to_empty_lists(self):
+        """Evidence is a list; a result without evidence has empty lists."""
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="not_enough_info",
+            confidence=50,
+        )
+        assert result.evidence == []
+        assert result.evidence_spans == []
+
+    def test_result_accepts_multiple_evidence_quotes(self):
+        result = VerificationResult(
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence=["First passage.", "Second passage.", "Third passage."],
+            explanation="Several passages.",
+        )
+        assert len(result.evidence) == 3
+
+
+class TestEvidenceSpan:
+    """Tests for the EvidenceSpan dataclass."""
+
+    def test_fields_and_to_dict(self):
+        span = EvidenceSpan(quote="alpha beta", start=6, end=16, document_index=2)
+        assert span.to_dict() == {
+            "quote": "alpha beta",
+            "start": 6,
+            "end": 16,
+            "document_index": 2,
+        }
+
+    def test_document_index_defaults_to_none(self):
+        span = EvidenceSpan(quote="alpha", start=0, end=5)
+        assert span.document_index is None
 
     def test_result_default_optional_fields(self):
         result = VerificationResult(
@@ -57,7 +102,7 @@ class TestVerificationResult:
             claim_index=1,
             verdict="not_enough_info",
             confidence=50,
-            evidence="N/A",
+            evidence=[],
             explanation="No info.",
         )
         assert result.document_id is None
@@ -71,7 +116,7 @@ class TestVerificationResult:
             claim_index=1,
             verdict="supported",
             confidence=90,
-            evidence="Evidence text.",
+            evidence=["Evidence text."],
             explanation="Explanation.",
             document_id="doc_1",
             document_index=0,
@@ -90,7 +135,7 @@ class TestVerificationResult:
             claim_index=1,
             verdict="supported",
             confidence=0,
-            evidence="N/A",
+            evidence=[],
             explanation="None.",
         )
         assert result.confidence == 0
@@ -100,7 +145,7 @@ class TestVerificationResult:
             claim_index=1,
             verdict="supported",
             confidence=100,
-            evidence="N/A",
+            evidence=[],
             explanation="None.",
         )
         assert result2.confidence == 100
@@ -173,7 +218,7 @@ class TestCheckReport:
                 claim_index=1,
                 verdict="supported",
                 confidence=95,
-                evidence="Paris is the capital of France.",
+                evidence=["Paris is the capital of France."],
                 explanation="Document states this.",
             ),
             VerificationResult(
@@ -181,7 +226,7 @@ class TestCheckReport:
                 claim_index=2,
                 verdict="contradicted",
                 confidence=85,
-                evidence="The Louvre is in Paris.",
+                evidence=["The Louvre is in Paris."],
                 explanation="Documents say Paris.",
             ),
         ]
@@ -199,6 +244,35 @@ class TestCheckReport:
         assert len(d["hallucination_flags"]) == 1
         assert d["hallucination_flags"][0]["claim_index"] == 2
 
+    def test_report_to_dict_serializes_evidence_lists(self):
+        """Multiple evidence quotes and their located spans both serialize."""
+        results = [
+            VerificationResult(
+                claim="Test.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence=["alpha beta", "gamma delta", "not located"],
+                explanation="Two located passages.",
+                evidence_spans=[
+                    EvidenceSpan(quote="alpha beta", start=0, end=10, document_index=0),
+                    EvidenceSpan(quote="gamma delta", start=20, end=31, document_index=1),
+                ],
+            ),
+        ]
+        report = CheckReport(
+            answer="Test.",
+            overall_confidence=90.0,
+            overall_verdict="fully_supported",
+            results=results,
+        )
+        d = report.to_dict()
+        assert d["results"][0]["evidence"] == ["alpha beta", "gamma delta", "not located"]
+        assert d["results"][0]["evidence_spans"] == [
+            {"quote": "alpha beta", "start": 0, "end": 10, "document_index": 0},
+            {"quote": "gamma delta", "start": 20, "end": 31, "document_index": 1},
+        ]
+
     def test_report_to_dict_with_span_fields(self):
         results = [
             VerificationResult(
@@ -206,7 +280,7 @@ class TestCheckReport:
                 claim_index=1,
                 verdict="supported",
                 confidence=90,
-                evidence="Evidence.",
+                evidence=["Evidence."],
                 explanation="Explanation.",
                 document_id="doc_1",
                 chunk_id="0",
@@ -249,7 +323,7 @@ class TestCheckReport:
                 claim_index=1,
                 verdict="supported",
                 confidence=95,
-                evidence="Evidence.",
+                evidence=["Evidence."],
                 explanation="Explanation.",
             )
         ]

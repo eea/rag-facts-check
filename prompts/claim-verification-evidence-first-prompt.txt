@@ -6,4 +6,4 @@ Source Documents:
 Claim:
 {claim}
 
-Return JSON: {{"verdict": "...", "evidence": "verbatim quote", "document_index": 0, "explanation": "..."}}
+Return JSON: {{"verdict": "...", "evidence": ["verbatim quote", "another verbatim quote"], "document_index": 0, "explanation": "..."}}

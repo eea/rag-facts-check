@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from atomic_agents import AtomicAgent
 
 from .llm import LLM
-from .models import CheckReport, Claim, Span, VerificationResult
+from .models import CheckReport, Claim, EvidenceSpan, Span, VerificationResult
 from .prompts import (
     CLAIM_EXTRACTION_SYSTEM,
     CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
@@ -32,7 +32,11 @@ from .prompts import (
     format_documents,
 )
 from .retriever import DocumentChunk, EvidenceRetriever
-from .spans import find_evidence_span_in_doc, find_span_in_text
+from .spans import (
+    find_evidence_spans,
+    find_span_in_text,
+    normalize_evidence_quotes,
+)
 
 log = logging.getLogger("rag_facts_check")
 
@@ -391,9 +395,7 @@ class ClaimExtractor:
         log.debug("extract refine: LLM response (%d chars): %s", len(response), response[:500])
         return self._parse_extraction_response(response)
 
-    def _to_claim_objects(
-        self, raw: list[dict[str, str]], answer: str = ""
-    ) -> list[Claim]:
+    def _to_claim_objects(self, raw: list[dict[str, str]], answer: str = "") -> list[Claim]:
         """Convert raw dicts to Claim objects with computed spans when answer is provided."""
         claims = []
         for i, item in enumerate(raw):
@@ -489,9 +491,7 @@ class ClaimVerifier:
             # Pass chunks as dicts so format_documents can include titles
             # as headers without polluting the raw text (span offsets).
             docs_to_verify = [
-                {"text": c.text, "title": c.title}
-                for c in chunks
-                if c.title is not None
+                {"text": c.text, "title": c.title} for c in chunks if c.title is not None
             ] or [c.text for c in chunks]  # fallback to plain text if no titles
         else:
             docs_to_verify = documents
@@ -508,11 +508,11 @@ class ClaimVerifier:
         else:
             result = await self._single_verify(claim, docs_to_verify, temperature=0.1)
             # Extract document_id from chunks when available
-            if chunks and result.evidence and result.evidence != "N/A":
+            if chunks and result.evidence:
                 for chunk in chunks:
-                    if (
-                        result.evidence.strip('"').strip() in chunk.text
-                        or chunk.text in result.evidence
+                    if any(
+                        quote in chunk.text or chunk.text in quote
+                        for quote in (q.strip('"').strip() for q in result.evidence)
                     ):
                         result.document_id = chunk.doc_id
                         result.chunk_id = str(chunk.chunk_id)
@@ -575,7 +575,7 @@ class ClaimVerifier:
             claim_index=claim.index,
             verdict=verdict,
             confidence=0,
-            evidence=result.evidence or "N/A",
+            evidence=normalize_evidence_quotes(result.evidence),
             explanation=result.explanation or "",
             document_index=doc_index,
         )
@@ -590,24 +590,29 @@ class ClaimVerifier:
 
         - Verdict: majority vote
         - Confidence: consistency score as percentage (how many runs agreed)
-        - Evidence: from the result with the majority verdict
+        - Evidence: union of the quotes returned by the runs that agreed with the
+          majority verdict (deduplicated, capped at MAX_EVIDENCE_QUOTES)
         - Consistency score: fraction of runs that agree with the majority
         """
         verdicts = [r.verdict for r in results]
         verdict_counts = Counter(verdicts)
         majority_verdict, majority_count = verdict_counts.most_common(1)[0]
 
-        # Use evidence from the first result with the majority verdict
-        majority_result = next((r for r in results if r.verdict == majority_verdict), results[0])
+        # Merge evidence quotes from every run that agreed with the majority verdict
+        agreeing = [r for r in results if r.verdict == majority_verdict]
+        majority_result = agreeing[0] if agreeing else results[0]
+        merged_evidence = normalize_evidence_quotes(
+            [quote for r in agreeing for quote in r.evidence]
+        )
 
         # Extract document_id and chunk_id from evidence if available
         doc_id = None
         chunk_id = None
-        if chunks and majority_result.evidence and majority_result.evidence != "N/A":
+        if chunks and merged_evidence:
             for chunk in chunks:
-                if (
-                    majority_result.evidence.strip('"').strip() in chunk.text
-                    or chunk.text in majority_result.evidence
+                if any(
+                    quote in chunk.text or chunk.text in quote
+                    for quote in (q.strip('"').strip() for q in merged_evidence)
                 ):
                     doc_id = chunk.doc_id
                     chunk_id = str(chunk.chunk_id)
@@ -620,7 +625,7 @@ class ClaimVerifier:
             claim_index=claim.index,
             verdict=majority_verdict,
             confidence=int(consistency_score * 100),
-            evidence=majority_result.evidence,
+            evidence=merged_evidence,
             explanation=majority_result.explanation,
             document_id=doc_id,
             document_index=majority_result.document_index,
@@ -665,7 +670,7 @@ class ClaimVerifier:
         else:
             verdict = "not_enough_info"
 
-        evidence = data.get("evidence", "N/A") or "N/A"
+        evidence = normalize_evidence_quotes(data.get("evidence"))
         explanation = data.get("explanation", "") or ""
 
         # Parse document_index (0-based)
@@ -685,7 +690,7 @@ class ClaimVerifier:
     def _parse_text_result(self, claim: Claim, response: str) -> VerificationResult:
         """Parse legacy VERDICT:/CONFIDENCE: text format."""
         verdict = "not_enough_info"
-        evidence = "N/A"
+        evidence: list[str] = []
         explanation = ""
 
         verdict_match = re.search(r"VERDICT:\s*(.+?)(?:\n|$)", response, re.IGNORECASE)
@@ -706,7 +711,8 @@ class ClaimVerifier:
             re.IGNORECASE | re.DOTALL,
         )
         if evidence_match:
-            evidence = evidence_match.group(1).strip()
+            # The legacy text format may carry several quotes separated by blank lines.
+            evidence = normalize_evidence_quotes(re.split(r"\n\s*\n", evidence_match.group(1)))
 
         expl_match = re.search(
             r"EXPLANATION:\s*(.+?)(?:\Z)",
@@ -752,16 +758,10 @@ class ClaimVerifier:
 
         if self.batch_size < 2:
             # Fall back to sequential verification
-            return [
-                await self.verify(claim, documents)
-                for claim in claims
-            ]
+            return [await self.verify(claim, documents) for claim in claims]
 
         # Group claims into batches
-        batches = [
-            claims[i : i + self.batch_size]
-            for i in range(0, len(claims), self.batch_size)
-        ]
+        batches = [claims[i : i + self.batch_size] for i in range(0, len(claims), self.batch_size)]
 
         log.info(
             "verify_batch: %d claims in %d batches (batch_size=%d)",
@@ -786,8 +786,9 @@ class ClaimVerifier:
         indexed_claims = [(c.index, c.text) for c in claims]
         prompt = format_claim_verification_batch_prompt(indexed_claims, documents)
 
-        # Use larger max_new_tokens for batch responses (more claims = more output)
-        batch_tokens = max(self.max_new_tokens, len(claims) * 128)
+        # Use larger max_new_tokens for batch responses (more claims = more output,
+        # and each claim may carry up to 2 verbatim quotes).
+        batch_tokens = max(self.max_new_tokens, len(claims) * 192)
 
         response = await self.llm.generate(
             prompt,
@@ -824,7 +825,7 @@ class ClaimVerifier:
                         claim_index=claim.index,
                         verdict="not_enough_info",
                         confidence=0,
-                        evidence="N/A",
+                        evidence=[],
                         explanation="Batch response missing this claim.",
                     )
                 )
@@ -875,7 +876,7 @@ class ClaimVerifier:
             else:
                 verdict = "not_enough_info"
 
-            evidence = item.get("evidence", "N/A") or "N/A"
+            evidence = normalize_evidence_quotes(item.get("evidence"))
             explanation = item.get("explanation", "") or ""
             doc_index_raw = item.get("document_index")
             doc_index = int(doc_index_raw) if doc_index_raw is not None else None
@@ -1098,11 +1099,9 @@ class RAGFactsChecker:
         if self.verifier.batch_size > 1:
             # Batch verification: one LLM call per batch of claims
             results = await self.verifier.verify_batch(claims, docs_for_verifier)
-            # Compute evidence spans for batch results
+            # Locate evidence spans for batch results
             for result in results:
-                evidence_span = self._find_evidence_span(result, documents, None)
-                if evidence_span:
-                    result.evidence_span = evidence_span
+                self._locate_evidence(result, documents)
         else:
             # Sequential verification: one LLM call per claim
             results = []
@@ -1112,68 +1111,82 @@ class RAGFactsChecker:
                 if chunks is not None:
                     relevant_chunks = await self.retriever.retrieve(claim.text, chunks)
 
-                result = await self.verifier.verify(
-                    claim, docs_for_verifier, chunks=relevant_chunks,
-                )
+                try:
+                    result = await self.verifier.verify(
+                        claim,
+                        docs_for_verifier,
+                        chunks=relevant_chunks,
+                    )
+                except Exception as e:
+                    # One malformed judge response must not take down the whole
+                    # report — degrade this single claim instead.
+                    log.exception("check: verification failed for claim[%d]", claim.index)
+                    result = VerificationResult(
+                        claim=claim.text,
+                        claim_index=claim.index,
+                        verdict="not_enough_info",
+                        confidence=0,
+                        evidence=[],
+                        explanation=f"Verification failed: {e}",
+                    )
 
-                # Compute evidence span in source documents
-                evidence_span = self._find_evidence_span(
-                    result,
-                    documents,
-                    relevant_chunks,
-                )
-                if evidence_span:
-                    result.evidence_span = evidence_span
+                # Locate every evidence quote of this claim in the source documents
+                self._locate_evidence(result, documents)
 
                 results.append(result)
 
         # Step 4: Aggregate
         return self._aggregate(answer, claims, results)
 
-    def _find_evidence_span(
+    def _locate_evidence(
         self,
         result: VerificationResult,
         documents: list[str] | list[dict[str, str]],
-        relevant_chunks: list["DocumentChunk"] | None,
-    ) -> Span | None:
-        """Find the evidence span for a verification result.
+    ) -> None:
+        """Locate each evidence quote of a result in the source documents.
 
-        Strategy:
-        1. If the LLM provided a document_index, search that document first
-        2. Fall back to searching all documents
-        3. If evidence quote doesn't match, use the top retrieved chunk's offsets
+        Fills ``result.evidence_spans`` with one span per quote that was found
+        (each carrying its own document index) and points ``result.document_index``
+        at the document holding the first located quote. Quotes that cannot be
+        found are skipped — a bogus span pointing at unrelated text is worse
+        than no citation at all.
         """
-        evidence = result.evidence
-        if not evidence or evidence == "N/A":
-            return None
+        result.evidence_spans = []
+        if not result.evidence or not documents:
+            return
 
-        # Step 1: Targeted search using document_index
-        if result.document_index is not None:
-            idx = result.document_index
-            if 0 <= idx < len(documents):
-                doc = documents[idx]
-                doc_text = doc["text"] if isinstance(doc, dict) else doc
-                span = find_evidence_span_in_doc(evidence, doc_text)
-                if span is not None:
-                    return Span(start=span[0], end=span[1])
+        try:
+            located = find_evidence_spans(
+                result.evidence,
+                documents,
+                preferred_document_index=result.document_index,
+            )
+        except Exception:  # defensive: span matching must never break a report
+            log.exception(
+                "_locate_evidence: span matching failed for claim[%d]", result.claim_index
+            )
+            return
 
-        # Step 2: Search all documents and record matching document_index
-        for i, doc in enumerate(documents):
-            doc_text = doc["text"] if isinstance(doc, dict) else doc
-            span = find_evidence_span_in_doc(evidence, doc_text)
-            if span is not None:
-                result.document_index = i
-                return Span(start=span[0], end=span[1])
+        result.evidence_spans = [
+            EvidenceSpan(quote=quote, start=start, end=end, document_index=doc_index)
+            for quote, doc_index, start, end in located
+        ]
 
-        # Evidence quote not found in any document. Return None so the
-        # segment is skipped — better than a bogus span pointing to
-        # unrelated text.
-        log.debug(
-            "_find_evidence_span: evidence quote not found for claim[%d]: %s",
-            result.claim_index,
-            evidence[:80],
-        )
-        return None
+        if located:
+            result.document_index = located[0][1]
+            if len(located) < len(result.evidence):
+                log.debug(
+                    "_locate_evidence: %d of %d evidence quotes not found for claim[%d]",
+                    len(result.evidence) - len(located),
+                    len(result.evidence),
+                    result.claim_index,
+                )
+        else:
+            log.debug(
+                "_locate_evidence: no evidence quote found for claim[%d]: %s",
+                result.claim_index,
+                "; ".join(result.evidence)[:120],
+            )
 
     # Answer quality score constants
     _SCORE_NEI_WEIGHT = 0.4  # not_enough_info verdict weight
@@ -1208,11 +1221,9 @@ class RAGFactsChecker:
         groundedness = weighted_sum / total * 10
 
         # 2. Citation penalty (1.0 = no penalty, 0.7 = max penalty)
-        cited = sum(1 for r in results if r.evidence_span is not None)
+        cited = sum(1 for r in results if r.evidence_spans)
         citation_ratio = cited / total
-        citation_penalty = 1.0 - (
-            self._SCORE_CITATION_MAX_REDUCTION * (1 - citation_ratio)
-        )
+        citation_penalty = 1.0 - (self._SCORE_CITATION_MAX_REDUCTION * (1 - citation_ratio))
 
         # 3. Contradiction penalty (1.0 = no penalty, 0 = max penalty)
         contradicted = sum(1 for r in results if r.verdict == "contradicted")

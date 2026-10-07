@@ -2,7 +2,7 @@
 
 import pytest
 
-from rag_facts_check.models import CheckReport, Claim, Span, VerificationResult
+from rag_facts_check.models import CheckReport, Claim, EvidenceSpan, Span, VerificationResult
 from rag_facts_check.server import _find_source_index, _to_halloumi_format
 
 
@@ -31,18 +31,26 @@ def sample_report():
                 claim_index=1,
                 verdict="supported",
                 confidence=95,
-                evidence="Paris is the capital.",
+                evidence=["Paris is the capital."],
                 explanation="Document states this explicitly.",
-                evidence_span=Span(start=0, end=22),
+                evidence_spans=[
+                    EvidenceSpan(
+                        quote="Paris is the capital.", start=0, end=22, document_index=0
+                    )
+                ],
             ),
             VerificationResult(
                 claim="The Eiffel Tower was built in 1889.",
                 claim_index=2,
                 verdict="supported",
                 confidence=90,
-                evidence="Eiffel Tower built 1889.",
+                evidence=["Eiffel Tower built 1889."],
                 explanation="Document confirms this.",
-                evidence_span=Span(start=50, end=75),
+                evidence_spans=[
+                    EvidenceSpan(
+                        quote="Eiffel Tower built 1889.", start=12, end=37, document_index=1
+                    )
+                ],
             ),
         ],
     )
@@ -240,10 +248,15 @@ class TestToHalloumiFormat:
                     claim_index=1,
                     verdict="supported",
                     confidence=95,
-                    evidence="actual evidence quote",
+                    evidence=["actual evidence quote"],
                     explanation="Found in source 2.",
                     document_index=1,
-                    evidence_span=Span(start=17, end=38),  # offset inside source 2
+                    evidence_spans=[
+                        # offset inside source 2
+                        EvidenceSpan(
+                            quote="actual evidence quote", start=17, end=38, document_index=1
+                        )
+                    ],
                 )
             ],
         )
@@ -269,16 +282,114 @@ class TestToHalloumiFormat:
                     claim_index=1,
                     verdict="supported",
                     confidence=95,
-                    evidence="European Climate Law mandates net-zero by 2050",
+                    evidence=["European Climate Law mandates net-zero by 2050"],
                     explanation="Matched via text fallback.",
                     document_index=None,
-                    evidence_span=None,  # missing span
+                    evidence_spans=[],  # spans never located
                 )
             ],
         )
         result = _to_halloumi_format(report, sources, "Net-zero by 2050.")
         assert len(result["segments"]) == 1
         assert result["claims"][0]["segmentIds"] == ["0"]
+
+
+class TestMultipleEvidenceSegments:
+    """A claim may be supported by several evidence quotes → several segments."""
+
+    ANSWER = "A claim that needs several passages."
+
+    @classmethod
+    def _report(cls, spans, claim_index=1):
+        return CheckReport(
+            answer=cls.ANSWER,
+            claims=[Claim(text=cls.ANSWER, index=claim_index, span=Span(0, 34))],
+            results=[
+                VerificationResult(
+                    claim="A claim that needs several passages.",
+                    claim_index=claim_index,
+                    verdict="supported",
+                    confidence=0,
+                    evidence=[s.quote for s in spans],
+                    explanation="Two passages support this.",
+                    evidence_spans=spans,
+                )
+            ],
+        )
+
+    def test_multiple_evidences_produce_multiple_segments(self):
+        sources = ["Alpha beta gamma delta epsilon zeta eta theta."]
+        spans = [
+            EvidenceSpan(quote="Alpha beta", start=0, end=10, document_index=0),
+            EvidenceSpan(quote="eta theta", start=29, end=38, document_index=0),
+        ]
+        result = _to_halloumi_format(self._report(spans), sources, self.ANSWER)
+
+        assert len(result["segments"]) == 2
+        assert result["claims"][0]["segmentIds"] == ["0", "1"]
+        offsets = sorted((s["startOffset"], s["endOffset"]) for s in result["segments"].values())
+        assert offsets == [(0, 10), (29, 38)]
+
+    def test_evidences_from_different_sources_use_source_offsets(self):
+        sources = ["First source has alpha.", "Second source has beta."]
+        spans = [
+            EvidenceSpan(quote="alpha", start=17, end=22, document_index=0),
+            EvidenceSpan(quote="beta", start=17, end=21, document_index=1),
+        ]
+        result = _to_halloumi_format(self._report(spans), sources, self.ANSWER)
+
+        offsets = sorted((s["startOffset"], s["endOffset"]) for s in result["segments"].values())
+        # second source starts at offset len(sources[0]) = 23 in the joined string
+        assert offsets == [(17, 22), (23 + 17, 23 + 21)]
+
+    def test_overlapping_evidences_merge_into_one_segment(self):
+        """Overlapping quotes would duplicate text in the frontend renderer."""
+        sources = ["Alpha beta gamma delta epsilon zeta eta theta."]
+        spans = [
+            EvidenceSpan(quote="Alpha beta gamma", start=0, end=16, document_index=0),
+            EvidenceSpan(quote="beta gamma delta", start=6, end=22, document_index=0),
+        ]
+        result = _to_halloumi_format(self._report(spans), sources, self.ANSWER)
+
+        assert len(result["segments"]) == 1
+        seg = result["segments"][result["claims"][0]["segmentIds"][0]]
+        assert (seg["startOffset"], seg["endOffset"]) == (0, 22)
+
+    def test_identical_span_shared_between_claims(self):
+        """Two claims citing the same passage render one chip, not two."""
+        sources = ["Alpha beta gamma delta."]
+        shared = [EvidenceSpan(quote="Alpha beta", start=0, end=10, document_index=0)]
+        report = CheckReport(
+            answer="Claim one. Claim two.",
+            claims=[
+                Claim(text="Claim one.", index=1, span=Span(0, 10)),
+                Claim(text="Claim two.", index=2, span=Span(11, 21)),
+            ],
+            results=[
+                VerificationResult(
+                    claim="Claim one.", claim_index=1, verdict="supported", confidence=0,
+                    evidence=[shared[0].quote], evidence_spans=shared,
+                    explanation="Same passage.",
+                ),
+                VerificationResult(
+                    claim="Claim two.", claim_index=2, verdict="supported", confidence=0,
+                    evidence=[shared[0].quote], evidence_spans=shared,
+                    explanation="Same passage.",
+                ),
+            ],
+        )
+        result = _to_halloumi_format(report, sources, "Claim one. Claim two.")
+
+        assert len(result["segments"]) == 1
+        assert result["claims"][0]["segmentIds"] == result["claims"][1]["segmentIds"]
+
+    def test_unlocatable_evidence_yields_no_segments(self):
+        sources = ["Nothing relevant here."]
+        spans = [EvidenceSpan(quote="alpha", start=100, end=120, document_index=7)]
+        result = _to_halloumi_format(self._report(spans), sources, self.ANSWER)
+
+        assert result["segments"] == {}
+        assert result["claims"][0]["segmentIds"] == []
 
 
 class TestFindSourceIndex:

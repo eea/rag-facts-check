@@ -9,7 +9,9 @@ from __future__ import annotations
 from atomic_agents import AgentConfig, AtomicAgent, BaseIOSchema
 from atomic_agents.context.system_prompt_generator import BaseSystemPromptGenerator
 from instructor import Mode
-from pydantic import Field
+from pydantic import Field, field_validator
+
+from .spans import normalize_evidence_quotes
 
 
 class _StaticSystemPromptGenerator(BaseSystemPromptGenerator):
@@ -21,6 +23,7 @@ class _StaticSystemPromptGenerator(BaseSystemPromptGenerator):
 
     def generate_prompt(self) -> str:
         return self._prompt
+
 
 # ---------------------------------------------------------------------------
 # Claim Extraction schemas
@@ -102,25 +105,39 @@ class VerificationOutput(BaseIOSchema):
         description="One of: SUPPORTED, CONTRADICTED, NOT_ENOUGH_INFO.",
         pattern=r"^(SUPPORTED|CONTRADICTED|NOT_ENOUGH_INFO)$",
     )
-    evidence: str = Field(
+    evidence: list[str] = Field(
         ...,
         description=(
-            "A VERBATIM quote from the source documents — copy-paste exact text, "
-            "do not paraphrase. This quote will be searched for in the original "
-            "documents, so it must match word-for-word. Use 'N/A' if not enough info."
+            "One or more VERBATIM quotes from the source documents — copy-paste exact "
+            "text, do not paraphrase. Each quote must be one contiguous passage from a "
+            "single document (no ellipses, no stitching passages together); each quote "
+            "is searched for word-for-word in the documents. Use 1 quote when one is "
+            "enough, up to 3 when several passages support the claim. Use an empty "
+            "list when there is no evidence."
         ),
     )
     document_index: int | None = Field(
         None,
         description=(
-            "Zero-based index of the source document containing the evidence "
-            "(0 = first document, 1 = second, etc.). Null if evidence is N/A."
+            "Zero-based index of the source document containing the FIRST evidence "
+            "quote (0 = first document, 1 = second, etc.). Null if evidence is empty."
         ),
     )
     explanation: str = Field(
         ...,
         description="Brief explanation of the verdict (max 2 sentences).",
     )
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _normalize_evidence(cls, value: object) -> list[str]:
+        """Accept bare strings/null and cap the number of quotes.
+
+        Models sometimes ignore the array instruction and return a single quote,
+        "N/A", or a list of objects. Coercing here avoids schema-validation
+        retries (and the 500s they eventually produce).
+        """
+        return normalize_evidence_quotes(value)
 
 
 # ---------------------------------------------------------------------------

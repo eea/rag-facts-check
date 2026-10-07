@@ -18,8 +18,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .models import Span
-from .spans import find_evidence_span_in_doc
+from .spans import find_evidence_span_in_doc, merge_overlapping_spans
 
 # Configure logging for development
 logging.basicConfig(
@@ -284,11 +283,11 @@ def create_app() -> FastAPI:
                 log.info("  claim[%d]: span=%s text=%s", i, c.span, c.text[:80])
             for i, r in enumerate(report.results):
                 log.info(
-                    "  result[%d]: verdict=%s confidence=%d span=%s",
+                    "  result[%d]: verdict=%s evidence=%d spans=%s",
                     i,
                     r.verdict,
-                    r.confidence,
-                    r.evidence_span,
+                    len(r.evidence),
+                    [(s.document_index, s.start, s.end) for s in r.evidence_spans],
                 )
             return _to_halloumi_format(report, raw_texts, request.answer)
         except Exception as e:
@@ -309,9 +308,7 @@ def create_app() -> FastAPI:
         documents = [{"doc_id": d.doc_id, "text": d.text} for d in request.documents]
 
         try:
-            batch_size = (
-                request.options.batch_size if request.options else None
-            )
+            batch_size = request.options.batch_size if request.options else None
             report = await checker.check(
                 answer=request.answer,
                 documents=documents,
@@ -359,6 +356,59 @@ def _find_source_index(evidence: str, sources: list[str]) -> int | None:
     return None
 
 
+def _joined_evidence_spans(
+    result,
+    sources: list[str],
+    source_offsets: list[int],
+) -> list[tuple[int, int]]:
+    """Map a result's evidence quotes to offsets in the joined sources string.
+
+    Each located evidence span is offset by its own source document, so several
+    evidences from several documents map correctly. Overlapping spans are merged:
+    the frontend splits the source text on segment boundaries, so overlapping
+    segments would render the same text twice.
+
+    Args:
+        result: A :class:`VerificationResult` from the report.
+        sources: Raw source texts, in the order sent to the frontend.
+        source_offsets: Start offset of each source in the joined string.
+
+    Returns:
+        Sorted list of disjoint ``(startOffset, endOffset)`` pairs in joined-string
+        coordinates (end exclusive).
+    """
+    joined: list[tuple[int, int]] = []
+
+    for span in result.evidence_spans:
+        if span.end <= span.start:
+            continue
+        idx = span.document_index
+        if idx is None or not 0 <= idx < len(sources):
+            idx = _find_source_index(span.quote, sources)
+        if idx is None or not 0 <= idx < len(sources):
+            log.debug(
+                "_to_halloumi: evidence span %s-%s for claim[%d] matches no source, skipping",
+                span.start,
+                span.end,
+                result.claim_index,
+            )
+            continue
+        joined.append((source_offsets[idx] + span.start, source_offsets[idx] + span.end))
+
+    if not joined:
+        # Safety net for reports whose spans were never located (e.g. a report
+        # built outside the checker pipeline): match the raw quotes now.
+        for quote in result.evidence:
+            idx = _find_source_index(quote, sources)
+            if idx is None:
+                continue
+            matched = find_evidence_span_in_doc(quote, sources[idx])
+            if matched:
+                joined.append((source_offsets[idx] + matched[0], source_offsets[idx] + matched[1]))
+
+    return merge_overlapping_spans(joined)
+
+
 def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
@@ -381,7 +431,9 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
     }
 
     The segments are computed from evidence_spans, mapped into the
-    joined sources string so the frontend can highlight them.
+    joined sources string so the frontend can highlight them. A claim with
+    several evidence quotes gets one segment per quote (overlapping or
+    identical quotes collapse into a single segment).
 
     Per-claim score is verdict-based (not raw LLM confidence):
     - supported: 1.0
@@ -403,6 +455,9 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         offset += len(src)
 
     segments: dict[str, dict[str, int]] = {}
+    # Identical spans (same place in the same source) share one segment id, so
+    # two claims citing the same passage render one chip, not two.
+    segment_ids_by_span: dict[tuple[int, int], str] = {}
     claims: list[dict] = []
 
     for result in report.results:
@@ -425,54 +480,21 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
             start_offset = 0
             end_offset = len(answer_text)
 
-        # Build segment IDs from evidence spans
+        # Build segment IDs — one per located evidence quote
         segment_ids: list[str] = []
-        source_idx = None
-        evidence_span = result.evidence_span
-
-        # Prefer document_index if already identified by the checker
-        if result.document_index is not None and 0 <= result.document_index < len(sources):
-            source_idx = result.document_index
-
-        evidence_text = result.evidence.strip().strip('"') if result.evidence else ""
-        if evidence_text and evidence_text != "N/A":
-            if source_idx is None:
-                source_idx = _find_source_index(evidence_text, sources)
-            if evidence_span is None and source_idx is not None:
-                matched_span = find_evidence_span_in_doc(evidence_text, sources[source_idx])
-                if matched_span:
-                    evidence_span = Span(start=matched_span[0], end=matched_span[1])
-
-        if evidence_span and evidence_span.start != evidence_span.end:
-            if source_idx is not None:
-                joined_start = source_offsets[source_idx] + evidence_span.start
-                joined_end = source_offsets[source_idx] + evidence_span.end
-            else:
-                # Fallback: use raw offsets (may be wrong)
-                log.debug(
-                    "_to_halloumi: evidence doc index not found in sources, using raw span %s-%s",
-                    evidence_span.start,
-                    evidence_span.end,
-                )
-                joined_start = evidence_span.start
-                joined_end = evidence_span.end
-
-            # Skip zero-length or invalid spans
-            if joined_start >= 0 and joined_end > joined_start:
+        for joined_start, joined_end in _joined_evidence_spans(result, sources, source_offsets):
+            key = (joined_start, joined_end)
+            seg_id = segment_ids_by_span.get(key)
+            if seg_id is None:
                 seg_id = str(len(segments))
                 segments[seg_id] = {
                     "id": int(seg_id),
                     "startOffset": joined_start,
                     "endOffset": joined_end,
                 }
+                segment_ids_by_span[key] = seg_id
+            if seg_id not in segment_ids:
                 segment_ids.append(seg_id)
-            else:
-                log.debug(
-                    "_to_halloumi: skipping invalid span %s-%s for claim[%d]",
-                    joined_start,
-                    joined_end,
-                    result.claim_index,
-                )
 
         # Verdict-based score (not raw LLM confidence)
         score = verdict_scores.get(result.verdict, 0.4)
@@ -494,8 +516,9 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
 
     with_spans = sum(1 for r in report.results if report.claims[r.claim_index - 1].span)
     log.info(
-        "_to_halloumi: %d claims in output (of %d results, %d with spans)",
+        "_to_halloumi: %d claims / %d segments in output (of %d results, %d with spans)",
         len(claims),
+        len(segments),
         len(report.results),
         with_spans,
     )

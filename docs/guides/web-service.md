@@ -56,7 +56,7 @@ LLM_TEMPERATURE=0.1
 }
 ```
 
-**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_span` offsets), and `hallucination_flags`.
+**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_spans` offsets), and `hallucination_flags`.
 
 ### `POST /halloumi/generate` — Halloumi-compatible endpoint
 
@@ -118,6 +118,6 @@ Returns `{"status": "ok", "version": "0.2.0"}`.
 Both endpoints return character offsets for clickable highlighting:
 
 - **`claims[].span`**: `{start, end}` offsets in the original answer text
-- **`results[].evidence_span`**: `{start, end}` offsets in the source document text
+- **`results[].evidence_spans[]`**: `{quote, start, end, document_index}` — one entry per evidence quote located in a source document
 
 The client can use these to render clickable spans in the answer that link to highlighted evidence in the source documents.

@@ -4,6 +4,8 @@ Tests for the core fact-checking pipeline in rag_facts_check.checker.
 Covers ClaimExtractor, ClaimVerifier, RAGFactsChecker, and aggregation logic.
 """
 
+import json
+
 import pytest
 
 from rag_facts_check import EvidenceRetriever, RAGFactsChecker
@@ -12,8 +14,9 @@ from rag_facts_check.checker import (
     ClaimVerifier,
     split_answer_into_chunks,
 )
-from rag_facts_check.models import CheckReport, Claim, Span, VerificationResult
+from rag_facts_check.models import CheckReport, Claim, EvidenceSpan, Span, VerificationResult
 from rag_facts_check.retriever import DocumentChunk
+from rag_facts_check.spans import MAX_EVIDENCE_QUOTES
 
 SAMPLE_ANSWER_BERLIN = (
     "Paris is the capital of France. "
@@ -202,7 +205,7 @@ EXPLANATION: Document states this."""
         result = verifier._parse_result(claim, response)
         assert result.verdict == "supported"
         assert result.confidence == 0  # confidence no longer parsed from LLM
-        assert "Paris" in result.evidence
+        assert result.evidence == ["Paris is the capital of France."]
 
     def test_parse_result_contradicted(self):
         verifier = ClaimVerifier.__new__(ClaimVerifier)
@@ -231,13 +234,56 @@ EXPLANATION: No info."""
         claim = Claim(text="Test.", index=1)
         response = (
             '{"verdict": "SUPPORTED", "confidence": 90, '
-            '"evidence": "Paris is the capital.", '
+            '"evidence": ["Paris is the capital."], '
             '"document_index": 1, '
             '"explanation": "Found in doc 2."}'
         )
         result = verifier._parse_result(claim, response)
         assert result.verdict == "supported"
+        assert result.evidence == ["Paris is the capital."]
         assert result.document_index == 1
+
+    def test_parse_json_result_multiple_evidence(self):
+        """A judge may return several verbatim quotes for one claim."""
+        verifier = ClaimVerifier.__new__(ClaimVerifier)
+        claim = Claim(text="Test.", index=1)
+        response = (
+            '{"verdict": "SUPPORTED", '
+            '"evidence": ["Paris is the capital.", "France is in Europe."], '
+            '"document_index": 0, "explanation": "Two passages."}'
+        )
+        result = verifier._parse_result(claim, response)
+        assert result.evidence == ["Paris is the capital.", "France is in Europe."]
+
+    def test_parse_json_result_coerces_string_evidence(self):
+        """A judge that ignores the array instruction must not break parsing."""
+        verifier = ClaimVerifier.__new__(ClaimVerifier)
+        claim = Claim(text="Test.", index=1)
+        response = '{"verdict": "SUPPORTED", "evidence": "Paris is the capital."}'
+        result = verifier._parse_result(claim, response)
+        assert result.evidence == ["Paris is the capital."]
+
+    def test_parse_json_result_caps_evidence(self):
+        """More quotes than MAX_EVIDENCE_QUOTES are truncated, first ones win."""
+        verifier = ClaimVerifier.__new__(ClaimVerifier)
+        claim = Claim(text="Test.", index=1)
+        quotes = [f"Quote number {i}." for i in range(1, 8)]
+        response = json.dumps({"verdict": "SUPPORTED", "evidence": quotes})
+        result = verifier._parse_result(claim, response)
+        assert result.evidence == quotes[:MAX_EVIDENCE_QUOTES]
+
+    def test_parse_json_result_drops_junk_evidence(self):
+        """Nulls, numbers, blanks and N/A placeholders are filtered out."""
+        verifier = ClaimVerifier.__new__(ClaimVerifier)
+        claim = Claim(text="Test.", index=1)
+        response = json.dumps(
+            {
+                "verdict": "SUPPORTED",
+                "evidence": ["", "N/A", 42, {"quote": "Real quote."}, "Real quote."],
+            }
+        )
+        result = verifier._parse_result(claim, response)
+        assert result.evidence == ["Real quote."]
 
     def test_parse_json_result_without_document_index(self):
         """JSON without document_index should default to None."""
@@ -257,7 +303,7 @@ EXPLANATION: No info."""
         result = verifier._parse_result(claim, response)
         assert result.verdict == "supported"
         assert result.confidence == 0
-        assert result.evidence == "N/A"
+        assert result.evidence == []
 
     def test_aggregate_consistency(self):
         verifier = ClaimVerifier.__new__(ClaimVerifier)
@@ -265,20 +311,22 @@ EXPLANATION: No info."""
         results = [
             VerificationResult(
                 claim="Test.", claim_index=1, verdict="supported",
-                confidence=90, evidence="E1", explanation="E1",
+                confidence=90, evidence=["E1"], explanation="E1",
             ),
             VerificationResult(
                 claim="Test.", claim_index=1, verdict="supported",
-                confidence=85, evidence="E2", explanation="E2",
+                confidence=85, evidence=["E2", "E1"], explanation="E2",
             ),
             VerificationResult(
                 claim="Test.", claim_index=1, verdict="contradicted",
-                confidence=70, evidence="E3", explanation="E3",
+                confidence=70, evidence=["E3"], explanation="E3",
             ),
         ]
         agg = verifier._aggregate_consistency(claim, None, results)
         assert agg.verdict == "supported"  # majority
         assert agg.consistency_score == pytest.approx(2 / 3)
+        # Evidence from every run agreeing with the majority is kept, deduplicated
+        assert agg.evidence == ["E1", "E2"]
 
 
 class TestRAGFactsChecker:
@@ -286,56 +334,83 @@ class TestRAGFactsChecker:
 
     # ── Evidence span tests (no LLM needed) ──
 
-    def test_find_evidence_span_targeted_match(self):
+    def test_locate_evidence_targeted_match(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["First document.", "Second document with evidence."]
         result = VerificationResult(
             claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence="with evidence", explanation="Found it.",
+            confidence=90, evidence=["with evidence"], explanation="Found it.",
             document_index=1,
         )
-        span = checker._find_evidence_span(result, docs, None)
-        assert span is not None
+        checker._locate_evidence(result, docs)
+        assert len(result.evidence_spans) == 1
+        span = result.evidence_spans[0]
         assert docs[1][span.start : span.end] == "with evidence"
+        assert span.document_index == 1
 
-    def test_find_evidence_span_fallback_all_docs(self):
+    def test_locate_evidence_fallback_all_docs(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["First document with evidence.", "Second document."]
         result = VerificationResult(
             claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence="with evidence", explanation="Found it.",
+            confidence=90, evidence=["with evidence"], explanation="Found it.",
             document_index=1,  # Wrong! Evidence is in doc 0
         )
-        span = checker._find_evidence_span(result, docs, None)
-        assert span is not None
+        checker._locate_evidence(result, docs)
+        assert len(result.evidence_spans) == 1
+        span = result.evidence_spans[0]
         assert docs[0][span.start : span.end] == "with evidence"
+        # document_index is corrected to the document that actually matched
+        assert result.document_index == 0
 
-    def test_find_evidence_span_not_found_returns_none(self):
+    def test_locate_evidence_multiple_quotes_across_docs(self):
+        """Each quote is located in its own document, independently."""
+        checker = RAGFactsChecker.__new__(RAGFactsChecker)
+        docs = ["Mangroves store carbon in their soils.", "Peatlands cover 3% of land area."]
+        result = VerificationResult(
+            claim="Test.", claim_index=1, verdict="supported", confidence=90,
+            evidence=["Peatlands cover 3% of land area", "Mangroves store carbon"],
+            explanation="Two sources.", document_index=0,
+        )
+        checker._locate_evidence(result, docs)
+        assert [(s.document_index, s.quote) for s in result.evidence_spans] == [
+            (1, "Peatlands cover 3% of land area"),
+            (0, "Mangroves store carbon"),
+        ]
+
+    def test_locate_evidence_skips_unmatched_quotes(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Some document text that doesn't match the evidence."]
         result = VerificationResult(
             claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence="Paraphrased evidence that won't match",
+            confidence=90, evidence=["Paraphrased evidence that won't match"],
             explanation="Found it.", document_index=0,
         )
-        chunks = [
-            DocumentChunk(
-                text="Some document text", doc_id="doc_1",
-                doc_index=0, chunk_id=0, start=0, end=18,
-            )
-        ]
-        span = checker._find_evidence_span(result, docs, chunks)
-        assert span is None
+        checker._locate_evidence(result, docs)
+        assert result.evidence_spans == []
 
-    def test_find_evidence_span_na_evidence(self):
+    def test_locate_evidence_keeps_matched_quote_of_partial_list(self):
+        checker = RAGFactsChecker.__new__(RAGFactsChecker)
+        docs = ["Paris is the capital of France."]
+        result = VerificationResult(
+            claim="Test.", claim_index=1, verdict="supported", confidence=90,
+            evidence=["Paris is the capital of France", "hallucinated quote"],
+            explanation="One real, one made up.",
+        )
+        checker._locate_evidence(result, docs)
+        assert len(result.evidence_spans) == 1
+        # The judge's quotes are preserved as-is for reporting/debugging
+        assert len(result.evidence) == 2
+
+    def test_locate_evidence_empty_evidence(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Some document."]
         result = VerificationResult(
             claim="Test.", claim_index=1, verdict="not_enough_info",
-            confidence=60, evidence="N/A", explanation="No info.",
+            confidence=60, evidence=[], explanation="No info.",
         )
-        span = checker._find_evidence_span(result, docs, None)
-        assert span is None
+        checker._locate_evidence(result, docs)
+        assert result.evidence_spans == []
 
     # ── Full-pipeline tests (use mock_llm fixture) ──
 
@@ -503,6 +578,42 @@ class TestRAGFactsChecker:
         if report.claims and report.results:
             assert len(report.results) == len(report.claims)
 
+    async def test_check_isolates_failing_claim(self):
+        """One broken judge response must not take down the whole report."""
+
+        class FlakyLLM:
+            def __init__(self):
+                self.verify_calls = 0
+
+            async def generate(self, prompt, **kwargs):
+                if '"verdict"' in prompt:  # verification prompt
+                    self.verify_calls += 1
+                    if self.verify_calls == 1:
+                        raise ValueError("judge returned something unparseable")
+                    return (
+                        '{"verdict": "SUPPORTED", '
+                        '"evidence": ["The Eiffel Tower was built in 1889"], '
+                        '"explanation": "Found."}'
+                    )
+                return (
+                    "CLAIM 1: Paris is the capital of France.\n"
+                    "CLAIM 2: The Eiffel Tower was built in 1889.\n"
+                )
+
+        checker = RAGFactsChecker(FlakyLLM(), use_evidence_retrieval=False, batch_size=1)
+        report = await checker.check(
+            answer="Paris is the capital of France. The Eiffel Tower was built in 1889.",
+            documents=["Paris is the capital of France. The Eiffel Tower was built in 1889."],
+        )
+
+        assert len(report.results) == 2
+        failed = report.results[0]
+        assert failed.verdict == "not_enough_info"
+        assert failed.evidence == []
+        assert "Verification failed" in failed.explanation
+        assert report.results[1].verdict == "supported"
+        assert report.results[1].evidence_spans
+
     # ── Answer quality score tests (no LLM needed) ──
 
     def test_answer_score_all_supported_all_cited(self):
@@ -510,13 +621,13 @@ class TestRAGFactsChecker:
         results = [
             VerificationResult(
                 claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=95, evidence="Evidence 1.", explanation="Found it.",
-                evidence_span=Span(start=0, end=10),
+                confidence=95, evidence=["Evidence 1."], explanation="Found it.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
                 claim="Claim 2.", claim_index=2, verdict="supported",
-                confidence=90, evidence="Evidence 2.", explanation="Found it.",
-                evidence_span=Span(start=20, end=30),
+                confidence=90, evidence=["Evidence 2."], explanation="Found it.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -527,13 +638,13 @@ class TestRAGFactsChecker:
         results = [
             VerificationResult(
                 claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence="Evidence.", explanation="Found.",
-                evidence_span=Span(start=0, end=10),
+                confidence=90, evidence=["Evidence."], explanation="Found.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
                 claim="Claim 2.", claim_index=2, verdict="contradicted",
-                confidence=80, evidence="Contradiction.", explanation="Wrong.",
-                evidence_span=Span(start=20, end=30),
+                confidence=80, evidence=["Contradiction."], explanation="Wrong.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -544,11 +655,11 @@ class TestRAGFactsChecker:
         results = [
             VerificationResult(
                 claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=95, evidence="Paraphrased evidence", explanation="Found it.",
+                confidence=95, evidence=["Paraphrased evidence"], explanation="Found it.",
             ),
             VerificationResult(
                 claim="Claim 2.", claim_index=2, verdict="supported",
-                confidence=90, evidence="Paraphrased too", explanation="Found it.",
+                confidence=90, evidence=["Paraphrased too"], explanation="Found it.",
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -559,12 +670,12 @@ class TestRAGFactsChecker:
         results = [
             VerificationResult(
                 claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence="Evidence.", explanation="Found.",
-                evidence_span=Span(start=0, end=10),
+                confidence=90, evidence=["Evidence."], explanation="Found.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
                 claim="Claim 2.", claim_index=2, verdict="not_enough_info",
-                confidence=60, evidence="N/A", explanation="No info.",
+                confidence=60, evidence=[], explanation="No info.",
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -588,18 +699,18 @@ class TestRAGFactsChecker:
         results = [
             VerificationResult(
                 claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence="Evidence.", explanation="Found.",
-                evidence_span=Span(start=0, end=10),
+                confidence=90, evidence=["Evidence."], explanation="Found.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
                 claim="Claim 2.", claim_index=2, verdict="contradicted",
-                confidence=80, evidence="Contradiction.", explanation="Wrong.",
-                evidence_span=Span(start=20, end=30),
+                confidence=80, evidence=["Contradiction."], explanation="Wrong.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
             VerificationResult(
                 claim="Claim 3.", claim_index=3, verdict="contradicted",
-                confidence=85, evidence="Another contradiction.", explanation="Wrong again.",
-                evidence_span=Span(start=40, end=50),
+                confidence=85, evidence=["Another contradiction."], explanation="Wrong again.",
+                evidence_spans=[EvidenceSpan(quote="Evidence", start=40, end=50)],
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -728,9 +839,9 @@ class TestClaimExtractorChunkingAndDeduplication:
 
 
 class TestEvidenceSpanDocumentTracking:
-    """Tests for RAGFactsChecker._find_evidence_span and document_index tracking."""
+    """Tests for RAGFactsChecker._locate_evidence and document_index tracking."""
 
-    def test_find_evidence_span_sets_document_index(self):
+    def test_locate_evidence_sets_document_index(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = [
             {"doc_id": "doc_1", "text": "First doc has general info."},
@@ -741,18 +852,20 @@ class TestEvidenceSpanDocumentTracking:
             claim_index=1,
             verdict="supported",
             confidence=90,
-            evidence="The EU is largely on track for 2030 targets.",
+            evidence=["The EU is largely on track for 2030 targets."],
             explanation="Found in doc 2",
         )
         assert result.document_index is None
 
-        span = checker._find_evidence_span(result, docs, None)
-        assert span is not None
+        checker._locate_evidence(result, docs)
+        assert len(result.evidence_spans) == 1
+        span = result.evidence_spans[0]
         assert span.start == 0
         assert span.end == 44
+        assert span.document_index == 1
         assert result.document_index == 1
 
-    def test_find_evidence_span_prefers_provided_document_index(self):
+    def test_locate_evidence_prefers_provided_document_index(self):
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = [
             {"doc_id": "doc_1", "text": "Common phrase appears here."},
@@ -763,12 +876,36 @@ class TestEvidenceSpanDocumentTracking:
             claim_index=1,
             verdict="supported",
             confidence=90,
-            evidence="Common phrase",
+            evidence=["Common phrase"],
             explanation="Targeting doc 2 specifically",
             document_index=1,
         )
 
-        span = checker._find_evidence_span(result, docs, None)
-        assert span is not None
+        checker._locate_evidence(result, docs)
+        assert len(result.evidence_spans) == 1
+        assert result.evidence_spans[0].document_index == 1
         assert result.document_index == 1
+
+    def test_locate_evidence_dict_documents_multiple_quotes(self):
+        """Structured documents (doc_id dicts) resolve one span per quote."""
+        checker = RAGFactsChecker.__new__(RAGFactsChecker)
+        docs = [
+            {"doc_id": "doc_1", "text": "Mangroves store carbon in their soils."},
+            {"doc_id": "doc_2", "text": "Peatlands cover 3% of global land area."},
+        ]
+        result = VerificationResult(
+            claim="Blue carbon",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence=["Mangroves store carbon", "Peatlands cover 3% of global land area"],
+            explanation="Both documents contribute.",
+            document_index=0,
+        )
+
+        checker._locate_evidence(result, docs)
+        assert [(s.document_index, s.start, s.end) for s in result.evidence_spans] == [
+            (0, 0, 22),
+            (1, 0, 38),
+        ]
 

@@ -4,8 +4,9 @@ Follow these steps in order:
 
 Step 1: Extract relevant evidence
 Read the source documents and extract any passages that are relevant to the claim.
-Quote them VERBATIM — copy-paste exact text, do not paraphrase. The quote must
-appear word-for-word in the source documents. Note which document number it comes from.
+Quote them VERBATIM — copy-paste exact text, do not paraphrase. Each quote must
+appear word-for-word in a single source document. Do not stitch two separate
+passages into one quote, and do not use ellipses to skip text.
 
 Step 2: Compare evidence to claim
 Compare the extracted evidence to the claim. Does the evidence support, contradict, or fail to address the claim?
@@ -18,8 +19,12 @@ Classify the claim as:
 
 Step 4: Output
 Return JSON with fields: verdict, evidence, document_index, explanation.
-- evidence: a verbatim quote from the source documents (copy-pasted, not paraphrased)
-- document_index: zero-based index of the document containing the evidence
-  (0 = first document, 1 = second, etc.), or null if evidence is N/A
+- evidence: a JSON ARRAY of verbatim quotes from the source documents (copy-pasted,
+  not paraphrased). Give 1 quote when one is enough, up to 3 quotes when several
+  passages are needed to support the claim — prefer a few strong, self-contained
+  quotes over many marginal ones. Each element is one contiguous quote from one
+  document. Use an empty array [] when there is no evidence.
+- document_index: zero-based index of the source document containing the FIRST
+  evidence quote (0 = first document, 1 = second, etc.), or null if evidence is []
 
 Be strict: if the evidence is ambiguous or indirect, lean toward NOT_ENOUGH_INFO.
