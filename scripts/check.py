@@ -30,6 +30,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 import os  # noqa: E402
 
 from rag_facts_check import AsyncAPILLM, RAGFactsChecker  # noqa: E402
+from rag_facts_check.llm import reasoning_disable_params  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -121,7 +122,10 @@ async def run(dataset_path: str, verbose: bool = False, batch_size: int = 1) -> 
     api_key = os.getenv("LLM_API_KEY", "not-needed")
     max_tokens = int(os.getenv("LLM_MAX_TOKENS", "512"))
     timeout = float(os.getenv("LLM_TIMEOUT", "120"))
-    extra_body = json.loads(os.getenv("LLM_EXTRA_BODY", "{}"))
+    extra_body = {
+        **reasoning_disable_params(os.getenv("LLM_DISABLE_REASONING")),
+        **json.loads(os.getenv("LLM_EXTRA_BODY", "{}")),
+    }
 
     if verbose:
         print(

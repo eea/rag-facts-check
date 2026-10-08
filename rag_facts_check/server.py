@@ -16,10 +16,10 @@ import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from .models import Span
-from .spans import find_evidence_span_in_doc
+from .llm import reasoning_disable_params
+from .spans import find_evidence_span_in_doc, merge_overlapping_spans
 
 # Configure logging for development
 logging.basicConfig(
@@ -49,6 +49,9 @@ def _load_env() -> dict[str, str]:
         "LLM_MAX_TOKENS",
         "LLM_TIMEOUT",
         "LLM_EXTRA_BODY",
+        "LLM_DISABLE_REASONING",
+        "CHECKER_MAX_DOCS_CHARS",
+        "CHECKER_MAX_CHARS_PER_DOC",
     ):
         value = os.environ.get(key)
         if value:
@@ -61,11 +64,34 @@ def _load_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def normalise_kind(value) -> str | None:
+    """Normalise a declared source kind.
+
+    Only `chunk` (the full text the answer was written from) and `snippet` (a search
+    blurb, which cannot prove a claim false) are understood; anything else — including
+    a client that sends nothing — is `None`, meaning "unknown", which must not be
+    reported as thin evidence.
+    """
+    if isinstance(value, str) and value.strip().lower() in ("chunk", "snippet"):
+        return value.strip().lower()
+    return None
+
+
 class DocumentInput(BaseModel):
     """A source document with an optional identifier."""
 
     doc_id: str = Field(..., description="Unique document identifier")
     text: str = Field(..., description="Document text")
+    kind: str | None = Field(
+        None,
+        description="'chunk' = the full text the answer was written from; "
+        "'snippet' = a search blurb, which cannot prove a claim false",
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _normalise_kind(cls, value):
+        return normalise_kind(value)
 
 
 class CheckOptions(BaseModel):
@@ -97,6 +123,16 @@ class HalloumiSource(BaseModel):
     title: str | None = Field(None, description="Document title or semantic identifier")
     source_type: str | None = Field(None, description="Source type (web, file, etc.)")
     link: str | None = Field(None, description="Source URL")
+    kind: str | None = Field(
+        None,
+        description="'chunk' = the full text the answer was written from; "
+        "'snippet' = a search blurb, which cannot prove a claim false",
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _normalise_kind(cls, value):
+        return normalise_kind(value)
 
 
 class HalloumiRequest(BaseModel):
@@ -113,6 +149,36 @@ class HalloumiRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
+
+def _build_extra_body(env: dict[str, str]) -> dict:
+    """Merge reasoning-control and provider-specific request parameters.
+
+    ``LLM_DISABLE_REASONING`` is the obvious knob (``1`` turns chain-of-thought
+    off, roughly halving judge latency); ``LLM_EXTRA_BODY`` remains available
+    for endpoint-specific tuning and wins on conflicting keys.
+    """
+    params = reasoning_disable_params(env.get("LLM_DISABLE_REASONING"))
+
+    raw = env.get("LLM_EXTRA_BODY", "") or "{}"
+    try:
+        extra_body = json.loads(raw)
+    except json.JSONDecodeError:
+        log.warning("LLM_EXTRA_BODY is not valid JSON, ignoring")
+        extra_body = {}
+    if not isinstance(extra_body, dict):
+        log.warning(
+            "LLM_EXTRA_BODY must be a JSON object, got %s — ignoring", type(extra_body).__name__
+        )
+        extra_body = {}
+
+    if params:
+        log.info(
+            "reasoning disabled (LLM_DISABLE_REASONING=%s) → %s",
+            env.get("LLM_DISABLE_REASONING"),
+            params,
+        )
+    return {**params, **extra_body}
 
 
 def create_app() -> FastAPI:
@@ -153,13 +219,9 @@ def create_app() -> FastAPI:
             api_key = env.get("LLM_API_KEY")
             model = env.get("LLM_MODEL", "gemma")
             temperature = float(env.get("LLM_TEMPERATURE", "0.1"))
-            max_tokens = int(env.get("LLM_MAX_TOKENS", "512"))
+            max_tokens = int(env.get("LLM_MAX_TOKENS", "1024"))
             timeout = float(env.get("LLM_TIMEOUT", "120"))
-            try:
-                extra_body = json.loads(env.get("LLM_EXTRA_BODY", "{}"))
-            except json.JSONDecodeError:
-                log.warning("LLM_EXTRA_BODY is not valid JSON, ignoring")
-                extra_body = {}
+            extra_body = _build_extra_body(env)
 
             api_url = api_base.rstrip("/") + "/chat/completions"
             _llm = AsyncAPILLM(
@@ -212,6 +274,12 @@ def create_app() -> FastAPI:
                 temperature=temperature,
                 max_new_tokens=max_tokens,
                 max_extraction_tokens=max_tokens,
+                # Source budgets. The chatbot now sends real Onyx chunk text
+                # (a few thousand characters per document), so the corpus can
+                # legitimately exceed the old per-document cap; truncating there
+                # hides the evidence a claim would have been matched against.
+                max_docs_chars=int(env.get("CHECKER_MAX_DOCS_CHARS", "100000")),
+                max_chars_per_doc=int(env.get("CHECKER_MAX_CHARS_PER_DOC", "10000")),
             )
         return _checker
 
@@ -232,26 +300,27 @@ def create_app() -> FastAPI:
         returns a response in halloumi's format so the existing frontend
         components work without changes.
 
-        Request: {"answer": "...", "sources": ["doc1...", "doc2..."]}
-        Response: {"answer_score": 0-10, "claims": [...], "segments": {...}}
+        Request: {"answer": "...", "sources": ["doc1...", {"text": "doc2...", "kind": "chunk"}]}
+        Response: {"answer_score": 0-10, "claims": [...], "segments": {...},
+                   "context_quality": {"level": "full|partial|unknown|none", ...}}
         """
         checker = _get_checker()
 
-        # Normalize sources: plain strings or structured dicts -> document dicts
+        # Normalize sources: plain strings or structured dicts -> document dicts.
+        # Source text is kept verbatim (never stripped): the frontend computes its
+        # highlight offsets by concatenating the same texts, so any character we
+        # drop here shifts every segment of every source after it.
         documents = []
         raw_texts: list[str] = []  # for _to_halloumi_format span mapping
+        source_kinds: list[str | None] = []  # 'chunk' | 'snippet' | None, per kept source
         for i, src in enumerate(request.sources):
+            text = src if isinstance(src, str) else (src.text or "")
+            if not text.strip():
+                log.debug("halloumi/generate: skipping empty source %d", i)
+                continue
             if isinstance(src, str):
-                text = src.strip()
-                if not text:
-                    continue
                 documents.append({"doc_id": f"doc_{i + 1}", "text": text})
-                raw_texts.append(text)
             else:
-                # Structured HalloumiSource
-                text = src.text.strip() if src.text else ""
-                if not text:
-                    continue
                 doc: dict[str, str | None] = {
                     "doc_id": f"doc_{i + 1}",
                     "text": text,
@@ -259,13 +328,22 @@ def create_app() -> FastAPI:
                 if src.title:
                     doc["title"] = src.title
                 documents.append(doc)
-                raw_texts.append(text)
+            raw_texts.append(text)
+            source_kinds.append(None if isinstance(src, str) else src.kind)
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
             len(request.answer),
             len(request.sources),
             len(documents),
+        )
+        quality = _context_quality(source_kinds)
+        log.info(
+            "halloumi/generate: context_quality=%s chunks=%d snippets=%d unknown=%d",
+            quality["level"],
+            quality["chunk_sources"],
+            quality["snippet_sources"],
+            quality["unknown_sources"],
         )
 
         try:
@@ -284,13 +362,13 @@ def create_app() -> FastAPI:
                 log.info("  claim[%d]: span=%s text=%s", i, c.span, c.text[:80])
             for i, r in enumerate(report.results):
                 log.info(
-                    "  result[%d]: verdict=%s confidence=%d span=%s",
+                    "  result[%d]: verdict=%s evidence=%d spans=%s",
                     i,
                     r.verdict,
-                    r.confidence,
-                    r.evidence_span,
+                    len(r.evidence),
+                    [(s.document_index, s.start, s.end) for s in r.evidence_spans],
                 )
-            return _to_halloumi_format(report, raw_texts, request.answer)
+            return _to_halloumi_format(report, raw_texts, request.answer, source_kinds)
         except Exception as e:
             log.exception("halloumi/generate error")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -307,17 +385,20 @@ def create_app() -> FastAPI:
 
         # Build documents list for the checker
         documents = [{"doc_id": d.doc_id, "text": d.text} for d in request.documents]
+        source_kinds = [d.kind for d in request.documents]
 
         try:
-            batch_size = (
-                request.options.batch_size if request.options else None
-            )
+            batch_size = request.options.batch_size if request.options else None
             report = await checker.check(
                 answer=request.answer,
                 documents=documents,
                 batch_size=batch_size,
             )
-            return report.to_dict()
+            result = report.to_dict()
+            # Same honesty rule as /halloumi/generate: a claim missing from a snippet
+            # proves nothing, so say what kind of text was checked against.
+            result["context_quality"] = _context_quality(source_kinds)
+            return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -359,7 +440,111 @@ def _find_source_index(evidence: str, sources: list[str]) -> int | None:
     return None
 
 
-def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
+def _joined_evidence_spans(
+    result,
+    sources: list[str],
+    source_offsets: list[int],
+) -> list[tuple[int, int]]:
+    """Map a result's evidence quotes to offsets in the joined sources string.
+
+    Each located evidence span is offset by its own source document, so several
+    evidences from several documents map correctly. Overlapping spans are merged:
+    the frontend splits the source text on segment boundaries, so overlapping
+    segments would render the same text twice.
+
+    Args:
+        result: A :class:`VerificationResult` from the report.
+        sources: Raw source texts, in the order sent to the frontend.
+        source_offsets: Start offset of each source in the joined string.
+
+    Returns:
+        Sorted list of disjoint ``(startOffset, endOffset)`` pairs in joined-string
+        coordinates (end exclusive).
+    """
+    joined: list[tuple[int, int]] = []
+
+    for span in result.evidence_spans:
+        if span.end <= span.start:
+            continue
+        idx = span.document_index
+        if idx is None or not 0 <= idx < len(sources):
+            idx = _find_source_index(span.quote, sources)
+        if idx is None or not 0 <= idx < len(sources):
+            log.debug(
+                "_to_halloumi: evidence span %s-%s for claim[%d] matches no source, skipping",
+                span.start,
+                span.end,
+                result.claim_index,
+            )
+            continue
+        joined.append((source_offsets[idx] + span.start, source_offsets[idx] + span.end))
+
+    if not joined:
+        # Safety net for reports whose spans were never located (e.g. a report
+        # built outside the checker pipeline): match the raw quotes now.
+        for quote in result.evidence:
+            idx = _find_source_index(quote, sources)
+            if idx is None:
+                continue
+            matched = find_evidence_span_in_doc(quote, sources[idx])
+            if matched:
+                joined.append((source_offsets[idx] + matched[0], source_offsets[idx] + matched[1]))
+
+    return merge_overlapping_spans(joined)
+
+
+def _context_quality(kinds: list[str | None]) -> dict:
+    """Describe how much real text the received sources actually carry.
+
+    A ``snippet`` source is a search blurb (~600 characters). The answer was written
+    from full chunk text, so a claim that does not appear in a blurb proves nothing:
+    reporting a low score over snippets without saying so is what turns thin plumbing
+    into a false hallucination verdict. See
+    ``docs/architecture/onyx-evidence-contract.md``.
+
+    Args:
+        kinds: One entry per non-empty source: ``"chunk"``, ``"snippet"`` or ``None``
+            (client did not declare a kind).
+
+    Returns:
+        Dict with ``level`` (``full`` / ``partial`` / ``unknown`` / ``none``), the
+        per-kind counts, and a human-readable ``note`` when the context is not full.
+    """
+    chunks = sum(1 for k in kinds if k == "chunk")
+    snippets = sum(1 for k in kinds if k == "snippet")
+    unknown = sum(1 for k in kinds if k is None)
+
+    if not kinds:
+        level = "none"
+    elif snippets:
+        level = "partial"
+    elif chunks and not unknown:
+        level = "full"
+    else:
+        level = "unknown"
+
+    notes = {
+        "none": "No sources were sent, so nothing could be verified.",
+        "partial": (
+            f"{snippets} of {len(kinds)} sources were search snippets, not full document "
+            "text. Claims reported as 'not enough information' may still be supported by "
+            "text that was never sent."
+        ),
+        "unknown": "Sources did not declare whether they are full text or snippets.",
+    }
+    return {
+        "level": level,
+        "sources": len(kinds),
+        "chunk_sources": chunks,
+        "snippet_sources": snippets,
+        "unknown_sources": unknown,
+        "note": notes.get(level),
+    }
+
+
+def _to_halloumi_format(
+    report, sources: list[str], answer_text: str = "", kinds: list[str | None] | None = None
+) -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
     Halloumi format:
@@ -381,13 +566,22 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
     }
 
     The segments are computed from evidence_spans, mapped into the
-    joined sources string so the frontend can highlight them.
+    joined sources string so the frontend can highlight them. A claim with
+    several evidence quotes gets one segment per quote (overlapping or
+    identical quotes collapse into a single segment).
 
     Per-claim score is verdict-based (not raw LLM confidence):
     - supported: 1.0
     - not_enough_info: 0.4
     - contradicted: 0.0
+
+    When the sources are known to be snippets (``kinds``), the response also carries
+    ``context_quality`` and marks each ``not_enough_info`` claim as
+    ``context_limited`` — that verdict may be an artifact of thin sources rather than
+    a real gap in the answer.
     """
+    # Sources present but no declared kind means "unknown"; no sources at all means "none".
+    quality = _context_quality(kinds if kinds is not None else [None] * len(sources))
     # Verdict-to-score mapping for per-claim scores
     verdict_scores = {
         "supported": 1.0,
@@ -403,6 +597,9 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         offset += len(src)
 
     segments: dict[str, dict[str, int]] = {}
+    # Identical spans (same place in the same source) share one segment id, so
+    # two claims citing the same passage render one chip, not two.
+    segment_ids_by_span: dict[tuple[int, int], str] = {}
     claims: list[dict] = []
 
     for result in report.results:
@@ -425,54 +622,21 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
             start_offset = 0
             end_offset = len(answer_text)
 
-        # Build segment IDs from evidence spans
+        # Build segment IDs — one per located evidence quote
         segment_ids: list[str] = []
-        source_idx = None
-        evidence_span = result.evidence_span
-
-        # Prefer document_index if already identified by the checker
-        if result.document_index is not None and 0 <= result.document_index < len(sources):
-            source_idx = result.document_index
-
-        evidence_text = result.evidence.strip().strip('"') if result.evidence else ""
-        if evidence_text and evidence_text != "N/A":
-            if source_idx is None:
-                source_idx = _find_source_index(evidence_text, sources)
-            if evidence_span is None and source_idx is not None:
-                matched_span = find_evidence_span_in_doc(evidence_text, sources[source_idx])
-                if matched_span:
-                    evidence_span = Span(start=matched_span[0], end=matched_span[1])
-
-        if evidence_span and evidence_span.start != evidence_span.end:
-            if source_idx is not None:
-                joined_start = source_offsets[source_idx] + evidence_span.start
-                joined_end = source_offsets[source_idx] + evidence_span.end
-            else:
-                # Fallback: use raw offsets (may be wrong)
-                log.debug(
-                    "_to_halloumi: evidence doc index not found in sources, using raw span %s-%s",
-                    evidence_span.start,
-                    evidence_span.end,
-                )
-                joined_start = evidence_span.start
-                joined_end = evidence_span.end
-
-            # Skip zero-length or invalid spans
-            if joined_start >= 0 and joined_end > joined_start:
+        for joined_start, joined_end in _joined_evidence_spans(result, sources, source_offsets):
+            key = (joined_start, joined_end)
+            seg_id = segment_ids_by_span.get(key)
+            if seg_id is None:
                 seg_id = str(len(segments))
                 segments[seg_id] = {
                     "id": int(seg_id),
                     "startOffset": joined_start,
                     "endOffset": joined_end,
                 }
+                segment_ids_by_span[key] = seg_id
+            if seg_id not in segment_ids:
                 segment_ids.append(seg_id)
-            else:
-                log.debug(
-                    "_to_halloumi: skipping invalid span %s-%s for claim[%d]",
-                    joined_start,
-                    joined_end,
-                    result.claim_index,
-                )
 
         # Verdict-based score (not raw LLM confidence)
         score = verdict_scores.get(result.verdict, 0.4)
@@ -480,22 +644,27 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         # Extract the claim text from the answer using the span
         claim_string = answer_text[start_offset:end_offset] if claim.span else claim.text
 
-        claims.append(
-            {
-                "claimString": claim_string,
-                "startOffset": start_offset,
-                "endOffset": end_offset,
-                "segmentIds": segment_ids,
-                "score": score,
-                "rationale": result.explanation,
-                "skipped": skipped,
-            }
-        )
+        claim_entry = {
+            "claimString": claim_string,
+            "startOffset": start_offset,
+            "endOffset": end_offset,
+            "segmentIds": segment_ids,
+            "score": score,
+            "rationale": result.explanation,
+            "skipped": skipped,
+        }
+        # A "not enough information" verdict is only trustworthy when the sources
+        # were real document text; over snippets it usually means the text was
+        # simply not sent.
+        if quality["level"] == "partial" and result.verdict == "not_enough_info":
+            claim_entry["context_limited"] = True
+        claims.append(claim_entry)
 
     with_spans = sum(1 for r in report.results if report.claims[r.claim_index - 1].span)
     log.info(
-        "_to_halloumi: %d claims in output (of %d results, %d with spans)",
+        "_to_halloumi: %d claims / %d segments in output (of %d results, %d with spans)",
         len(claims),
+        len(segments),
         len(report.results),
         with_spans,
     )
@@ -503,4 +672,5 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         "answer_score": report.answer_score,
         "claims": claims,
         "segments": segments,
+        "context_quality": quality,
     }

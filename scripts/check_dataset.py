@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rag_facts_check import APILLM, RAGFactsChecker
+from rag_facts_check.llm import reasoning_disable_params
 
 
 def load_env(env_path: str = ".env") -> dict:
@@ -48,11 +49,23 @@ def check_dataset(dataset_path: str, verbose: bool = False):
     url = base.rstrip("/") + "/chat/completions"
     model = env.get("LLM_MODEL", "gemma")
     api_key = env.get("LLM_API_KEY")
+    extra_body = {
+        **reasoning_disable_params(env.get("LLM_DISABLE_REASONING")),
+        **json.loads(env.get("LLM_EXTRA_BODY", "{}") or "{}"),
+    }
 
     if verbose:
         print(f"Using LLM: {model} at {url}")
+        if extra_body:
+            print(f"Extra request params: {extra_body}")
 
-    llm = APILLM(url, model_name=model, api_key=api_key, chat_mode=True)
+    llm = APILLM(
+        url,
+        model_name=model,
+        api_key=api_key,
+        chat_mode=True,
+        extra_body=extra_body,
+    )
     checker = RAGFactsChecker(llm)
     report = checker.check(answer=data["answer"], documents=data["documents"])
     return report

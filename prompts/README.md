@@ -36,6 +36,20 @@ Files may contain these placeholders, substituted at runtime:
 | [`claim-verification-evidence-first-system.txt`](claim-verification-evidence-first-system.txt) | System instruction: multi-step evidence-first verification |
 | [`claim-verification-evidence-first-prompt.txt`](claim-verification-evidence-first-prompt.txt) | User prompt template (simpler — steps are in the system prompt) |
 
+## Verification output contract
+
+All three verification variants (standard, evidence-first, batch) return:
+
+| Field | Type | Notes |
+|---|---|---|
+| `verdict` | string | `SUPPORTED` / `CONTRADICTED` / `NOT_ENOUGH_INFO` |
+| `evidence` | **array of strings** | 1-3 verbatim quotes, each contiguous within a single document; `[]` when there is no evidence. The parser also accepts a bare string (older models) and coerces it to a one-element list. |
+| `document_index` | int \| null | zero-based index of the document holding the **first** quote; each quote's document is re-resolved by span matching anyway |
+| `explanation` | string | brief rationale |
+
+Batch mode asks for at most 2 quotes per claim to keep the batch response inside the
+generation budget; the parser accepts up to 3 for every mode.
+
 ## Editing
 
 Edit any `.txt` file directly. Changes take effect on next server restart (or next import in development). No rebuild needed.

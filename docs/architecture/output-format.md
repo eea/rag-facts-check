@@ -45,7 +45,9 @@ The `CheckReport` is the final output of the fact-checking pipeline.
 Both claims and results include character offsets for clickable highlighting:
 
 - **`claims[].span`**: `{start, end}` offsets in the original answer text
-- **`results[].evidence_span`**: `{start, end}` offsets in the source document text
+- **`results[].evidence_spans[]`**: `{quote, start, end, document_index}` — one entry
+  per evidence quote that was actually located in a source document (quotes the
+  judge invented simply produce no entry, so the claim renders without a citation)
 
 ## VerificationResult Fields
 
@@ -53,10 +55,10 @@ Both claims and results include character offsets for clickable highlighting:
 |---|---|---|
 | `verdict` | `str` | `SUPPORTED`, `CONTRADICTED`, `NOT ENOUGH INFO` |
 | `confidence` | `int (0-100)` | Confidence in this verdict |
-| `evidence` | `str` | Quoted evidence from source documents |
+| `evidence` | `list[str]` | Up to 3 verbatim quotes from the source documents (`[]` when none). A judge that returns a bare string is coerced to a one-element list. |
 | `explanation` | `str` | Reasoning for the verdict |
 | `document_id` | `str` | ID of the source document (when using evidence retrieval) |
-| `document_index` | `int` | 0-based index of the source document containing the evidence |
+| `document_index` | `int` | 0-based index of the document holding the first located quote |
 | `chunk_id` | `str` | ID of the retrieved chunk (when using evidence retrieval) |
 | `consistency_score` | `float` | Agreement across self-consistency runs (when `num_consistency_runs > 1`) |
-| `evidence_span` | `Span` | Character offsets of the evidence in the source document |
+| `evidence_spans` | `list[EvidenceSpan]` | Located spans, one per matched quote, each with its own `document_index` |

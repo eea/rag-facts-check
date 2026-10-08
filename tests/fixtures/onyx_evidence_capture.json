@@ -1,0 +1,43 @@
+{
+  "source": "captured Onyx v3 stream: convo-check-sources.jsonl (2026-10-07, aihub.eea.europa.eu)",
+  "answer_chars": 7009,
+  "window": 2,
+  "selected_documents": [
+    {
+      "document_id": "https://www.eea.europa.eu/en/analysis/publications/monitoring-report-on-progress-towards-the-8th-eap-objectives-2025/8th-eap_progress-report_december-2025-th-01-25-041-en-n.pdf/@@download/file",
+      "chunk_ind": 63,
+      "semantic_identifier": "EEA monitoring report on progress towards the 8th Environment Action Programme objectives 2025",
+      "link": "https://www.eea.europa.eu/en/analysis/publications/monitoring-report-on-progress-towards-the-8th-eap-objectives-2025/8th-eap_progress-report_december-2025-th-01-25-041-en-n.pdf/@@download/file",
+      "blurb": "1.5%\n2.0%\n2.5%\n3.0%\n3.5%\n2010 2012 2014 2016 2018 2020 2022\n0\n100\n200\n300\n400\n500\n600\nWater saving Wastewater management\nWaste management Renewable energy and energy efficiency\nOther environmental protection Share of Gross Domestic Product (GDP)\nBillion EUR (2025 prices) Share of Gross Domestic Products (GDP)\n2.1%\n3.3%\nNotes: Values are expressed in 2025 prices.\nAccess the interactive chart here.\nSource: Eurostat.\n\nLiving well, within planetary boundaries\nMonitoring report on the progress towards the 8th EAP objectives 2025 93\nRelevance and policy target\n"
+    },
+    {
+      "document_id": "https://www.eea.europa.eu/en/about/policy-corner-eu-policies-we-support",
+      "chunk_ind": 0,
+      "semantic_identifier": "Policy corner: EU policies we support | About us | European Environment Agency (EEA)",
+      "link": "https://www.eea.europa.eu/en/about/policy-corner-eu-policies-we-support",
+      "blurb": "The EEA brings together scientific knowledge and expertise, with the aim of providing vital analysis and data to help develop, implement and evaluate a large number of European policies and legislation , with a particular focus on the European Green Dea l . Our policy corner links a selection of EU policies we support with relevant EEA knowledge.\nEuropean Green Deal: the main focus of our policy support work\nThe European Green Deal , together with the 8th Environment Action Programme , lies at the heart of the EU's sustainability packages and policy measures. "
+    },
+    {
+      "document_id": "https://www.eea.europa.eu/en/analysis/publications/european-union-8th-environment-action-programme/european-union-8th-environment-action-programme/@@download/file",
+      "chunk_ind": 60,
+      "semantic_identifier": "EEA monitoring report on progress towards the 8th Environment Action Programme objectives, 2023 edition",
+      "link": "https://www.eea.europa.eu/en/analysis/publications/european-union-8th-environment-action-programme/european-union-8th-environment-action-programme/@@download/file",
+      "blurb": "0.6%\n8.9%\nShare of green bonds in total bond issuance\nSource: Refinitiv EIKON/ESMA/EEA.\n\nEnabling conditions\nMonitoring report on progress towards the 8th Environment Action Programme objectives  2023 edition 84\nRelevance and policy target\n Green bonds use the proceeds to finance green projects, assets or specific \nbusiness activities that address environment and climate change issues.\n The European Green Deal underlines the need to redirect capital flows to green \ninvestments, which can be achieved through issuing green bonds, among others.\nIndicator past trend (2014-2022): increase \n"
+    },
+    {
+      "document_id": "https://www.eea.europa.eu/en/analysis/indicators/green-bonds-8th-eap",
+      "chunk_ind": 4,
+      "semantic_identifier": "Green bonds in Europe | Indicators | European Environment Agency (EEA)",
+      "link": "https://www.eea.europa.eu/en/analysis/indicators/green-bonds-8th-eap",
+      "blurb": "Green bond indicators such as this may contain discrepancies, as they rely on data provided by various commercial data providers, which report on issuances at different dates and rely on different green bond standards or frameworks. Moreover, numbers from the same data provider can vary depending on the date of data download and the currency exchange rate used, impacting comparability.\nThe 2025 update of the indicator refines the calculation of green bonds as a share of the total EU bond market. "
+    }
+  ],
+  "phrases_absent_from_blurbs": [
+    "Copernicus",
+    "European Investment Bank",
+    "Climate Awareness Bond",
+    "Forest Information System",
+    "28 headline indicators"
+  ],
+  "expected_evidence_chars_min": 30000
+}

@@ -1,9 +1,13 @@
 """Tests for span matching utilities."""
 
 from rag_facts_check.spans import (
+    MAX_EVIDENCE_QUOTES,
     find_evidence_span,
     find_evidence_span_in_doc,
+    find_evidence_spans,
     find_span_in_text,
+    merge_overlapping_spans,
+    normalize_evidence_quotes,
 )
 
 
@@ -206,3 +210,126 @@ class TestFindEvidenceSpanInDoc:
         assert find_evidence_span_in_doc('""', text) is None
         assert find_evidence_span_in_doc('...', text) is None
         assert find_evidence_span_in_doc('“…”', text) is None
+
+
+class TestNormalizeEvidenceQuotes:
+    """Tests for normalize_evidence_quotes (judge output coercion)."""
+
+    def test_list_passthrough(self):
+        assert normalize_evidence_quotes(["alpha", "beta"]) == ["alpha", "beta"]
+
+    def test_bare_string_becomes_single_item_list(self):
+        assert normalize_evidence_quotes("alpha beta") == ["alpha beta"]
+
+    def test_none_and_placeholders_become_empty(self):
+        assert normalize_evidence_quotes(None) == []
+        assert normalize_evidence_quotes("") == []
+        assert normalize_evidence_quotes("N/A") == []
+        assert normalize_evidence_quotes(["N/A", "", "none"]) == []
+
+    def test_strips_wrapping_quotes(self):
+        assert normalize_evidence_quotes(['"alpha beta"']) == ["alpha beta"]
+        assert normalize_evidence_quotes(["\u201calpha beta\u201d"]) == ["alpha beta"]
+
+    def test_deduplicates_case_and_whitespace_insensitive(self):
+        """Duplicates are dropped; the first spelling wins."""
+        assert normalize_evidence_quotes(["alpha beta", "ALPHA beta", "alpha  beta"]) == [
+            "alpha beta"
+        ]
+
+    def test_caps_at_max_quotes(self):
+        quotes = [f"quote {i}" for i in range(10)]
+        assert normalize_evidence_quotes(quotes) == quotes[:MAX_EVIDENCE_QUOTES]
+
+    def test_cap_is_configurable(self):
+        quotes = [f"quote {i}" for i in range(10)]
+        assert len(normalize_evidence_quotes(quotes, max_quotes=5)) == 5
+
+    def test_non_string_items_dropped_unless_quote_object(self):
+        result = normalize_evidence_quotes([42, None, ["nested"], {"quote": "alpha"}])
+        assert result == ["alpha"]
+
+    def test_tuple_input_accepted(self):
+        assert normalize_evidence_quotes(("alpha", "beta")) == ["alpha", "beta"]
+
+    def test_order_preserved(self):
+        assert normalize_evidence_quotes(["zulu", "alpha"]) == ["zulu", "alpha"]
+
+
+class TestMergeOverlappingSpans:
+    """Tests for merge_overlapping_spans."""
+
+    def test_disjoint_spans_kept(self):
+        assert merge_overlapping_spans([(20, 30), (0, 10)]) == [(0, 10), (20, 30)]
+
+    def test_overlapping_spans_merged(self):
+        assert merge_overlapping_spans([(0, 30), (10, 40)]) == [(0, 40)]
+
+    def test_touching_spans_merged(self):
+        assert merge_overlapping_spans([(0, 10), (10, 20)]) == [(0, 20)]
+
+    def test_nested_span_absorbed(self):
+        assert merge_overlapping_spans([(0, 50), (5, 20)]) == [(0, 50)]
+
+    def test_gap_kept_by_default(self):
+        assert merge_overlapping_spans([(0, 10), (12, 20)]) == [(0, 10), (12, 20)]
+
+    def test_max_gap_merges_near_spans(self):
+        assert merge_overlapping_spans([(0, 10), (12, 20)], max_gap=2) == [(0, 20)]
+
+    def test_empty_and_invalid_spans(self):
+        assert merge_overlapping_spans([]) == []
+        assert merge_overlapping_spans([(10, 5), (0, 4)]) == [(0, 4)]
+
+
+class TestFindEvidenceSpans:
+    """Tests for find_evidence_spans (one lookup per quote)."""
+
+    DOCS = ["Mangroves store carbon in their soils.", "Peatlands cover 3% of land area."]
+
+    def test_each_quote_located_in_its_own_document(self):
+        found = find_evidence_spans(
+            ["Mangroves store carbon", "Peatlands cover 3% of land area"], self.DOCS
+        )
+        assert [(q, d) for q, d, _s, _e in found] == [
+            ("Mangroves store carbon", 0),
+            ("Peatlands cover 3% of land area", 1),
+        ]
+
+    def test_preferred_document_index_is_tried_first(self):
+        docs = ["Common phrase here.", "Common phrase here too."]
+        found = find_evidence_spans(["Common phrase"], docs, preferred_document_index=1)
+        assert [d for _q, d, _s, _e in found] == [1]
+
+    def test_wrong_preferred_index_falls_back(self):
+        found = find_evidence_spans(
+            ["Peatlands cover 3%"], self.DOCS, preferred_document_index=0
+        )
+        assert [(d, s, e) for _q, d, s, e in found] == [(1, 0, 18)]
+
+    def test_unmatched_quotes_are_skipped(self):
+        found = find_evidence_spans(["not present at all"], self.DOCS)
+        assert found == []
+
+    def test_dict_documents_supported(self):
+        docs = [{"doc_id": "d1", "text": "Alpha text."}, {"doc_id": "d2", "text": "Beta text."}]
+        found = find_evidence_spans(["Beta text"], docs)
+        assert [(q, d, s, e) for q, d, s, e in found] == [("Beta text", 1, 0, 9)]
+
+    def test_empty_quote_list(self):
+        assert find_evidence_spans([], self.DOCS) == []
+
+
+class TestListTolerantLookups:
+    """Legacy callers may still pass a list where a quote string is expected."""
+
+    def test_find_evidence_span_in_doc_accepts_list(self):
+        text = "Alpha beta gamma."
+        assert find_evidence_span_in_doc(["zzz", "beta gamma"], text) == (6, 16)
+
+    def test_find_evidence_span_in_doc_list_without_match(self):
+        assert find_evidence_span_in_doc(["zzz"], "Alpha beta gamma.") is None
+
+    def test_find_evidence_span_accepts_list(self):
+        docs = ["Alpha beta gamma.", "Delta epsilon."]
+        assert find_evidence_span("Delta epsilon", docs) == ("doc_2", 0, 13)

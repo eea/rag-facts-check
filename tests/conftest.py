@@ -76,12 +76,19 @@ def _extraction_response(text: str) -> str:
 
 
 def _verification_json(
-    verdict: str, evidence: str, explanation: str, document_index: int | None = None,
+    verdict: str,
+    evidence: str | list[str],
+    explanation: str,
+    document_index: int | None = None,
 ) -> str:
-    """Build a JSON verification response."""
+    """Build a JSON verification response.
+
+    ``evidence`` is normalised to a list so mocks can keep passing a single
+    quote for simple cases while still exercising the list contract.
+    """
     obj = {
         "verdict": verdict.upper(),
-        "evidence": evidence,
+        "evidence": [evidence] if isinstance(evidence, str) else list(evidence),
         "explanation": explanation,
     }
     if document_index is not None:
@@ -110,7 +117,7 @@ def _verification_batch_json(verdict: str, prompt: str) -> str:
         {
             "claim_index": idx,
             "verdict": verdict.upper(),
-            "evidence": "Evidence from documents.",
+            "evidence": ["Evidence from documents."],
             "explanation": "Match found.",
         }
         for idx in indices
@@ -261,7 +268,7 @@ def supported_result():
         claim_index=1,
         verdict="supported",
         confidence=95,
-        evidence="Paris is the capital of France.",
+        evidence=["Paris is the capital of France."],
         explanation="The source document explicitly states this.",
     )
 
@@ -273,7 +280,7 @@ def contradicted_result():
         claim_index=2,
         verdict="contradicted",
         confidence=85,
-        evidence="The Louvre is located in Paris, France.",
+        evidence=["The Louvre is located in Paris, France."],
         explanation="Documents state Paris, claim says Berlin.",
     )
 
@@ -285,6 +292,6 @@ def not_enough_info_result():
         claim_index=3,
         verdict="not_enough_info",
         confidence=60,
-        evidence="N/A",
+        evidence=[],
         explanation="Documents do not contain sufficient information.",
     )

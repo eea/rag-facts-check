@@ -33,7 +33,26 @@ LLM_API_BASE=http://localhost:4002/v1
 LLM_API_KEY=not-needed
 LLM_MODEL=gemma
 LLM_TEMPERATURE=0.1
+# Reasoning models spend most of a judge call on chain-of-thought. Turn it off:
+LLM_DISABLE_REASONING=1
 ```
+
+`LLM_DISABLE_REASONING` accepts `1` (default strategy: `chat_template_kwargs.enable_thinking=false`,
+honoured by vLLM and llama.cpp server), `reasoning_effort` (`reasoning_effort: "none"`), or `both`.
+`LLM_EXTRA_BODY` still works for endpoint-specific tuning and overrides the flag on conflicting keys.
+
+Source budgets are also read from the environment:
+
+```env
+# Total characters of source text the judge may see across all documents
+CHECKER_MAX_DOCS_CHARS=100000
+# Fairness cap per document — applied only when the corpus does not fit the total
+CHECKER_MAX_CHARS_PER_DOC=10000
+```
+
+A document that fits inside `CHECKER_MAX_DOCS_CHARS` is passed whole. The per-document
+cap only kicks in when the corpus overflows the total, so one very long source cannot
+starve the others. See [Onyx Evidence Contract](../architecture/onyx-evidence-contract.md#character-budgets).
 
 ## Endpoints
 
@@ -45,8 +64,8 @@ LLM_TEMPERATURE=0.1
 {
   "answer": "Paris is the capital of France.",
   "documents": [
-    { "doc_id": "doc_1", "title": "Paris overview", "text": "Paris is the capital..." },
-    { "doc_id": "doc_2", "title": "Eiffel Tower", "text": "The Eiffel Tower..." }
+    { "doc_id": "doc_1", "text": "Paris is the capital...", "kind": "chunk" },
+    { "doc_id": "doc_2", "text": "The Eiffel Tower...", "kind": "snippet" }
   ],
   "options": {
     "num_consistency_runs": 1,
@@ -56,7 +75,13 @@ LLM_TEMPERATURE=0.1
 }
 ```
 
-**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_span` offsets), and `hallucination_flags`.
+| Field | Type | Description |
+|---|---|---|
+| `doc_id` | `str` | Unique document identifier (required) |
+| `text` | `str` | Document text (required) |
+| `kind` | `str \| null` | `chunk` = the full text the answer was written from; `snippet` = a search blurb. Optional; unrecognised values count as unknown. |
+
+**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_spans` offsets), `hallucination_flags`, and a `context_quality` block describing how much of the source text was real (see below).
 
 ### `POST /halloumi/generate` — Halloumi-compatible endpoint
 
@@ -83,6 +108,7 @@ Sources accept either plain strings or structured objects. Structured sources
 | `title` | `str \| null` | Document title or semantic identifier |
 | `source_type` | `str \| null` | Source type (e.g. `web`, `file`) |
 | `link` | `str \| null` | Source URL |
+| `kind` | `str \| null` | `chunk` = the full text the answer was written from; `snippet` = a search blurb. Anything else counts as unknown. |
 
 Plain strings are still accepted for backward compatibility but the LLM will
 not have document title context for verification.
@@ -91,6 +117,7 @@ not have document title context for verification.
 
 ```json
 {
+  "answer_score": 7.5,
   "claims": [
     {
       "startOffset": 0,
@@ -102,12 +129,29 @@ not have document title context for verification.
   ],
   "segments": {
     "0": { "startOffset": 0, "endOffset": 22 }
+  },
+  "context_quality": {
+    "level": "full",
+    "sources": 2,
+    "chunk_sources": 2,
+    "snippet_sources": 0,
+    "unknown_sources": 0,
+    "note": null
   }
 }
 ```
 
 Claim scores are categorical: `1.0` (supported), `0.4` (not enough info),
 `0.0` (contradicted). The frontend renders these as `High`, `Low`, `Failed`.
+
+**Context quality.** A `snippet` source is a ~600-character search blurb, so a claim
+that does not appear in it proves nothing — the answer was written from full chunk
+text. When any source is a snippet, `context_quality.level` is `partial` and every
+`not_enough_info` claim additionally carries `"context_limited": true`, meaning that
+verdict may be an artifact of thin sources rather than a real gap in the answer. Levels:
+`full` (all chunk text), `partial` (at least one snippet), `unknown` (client declared
+nothing), `none` (no sources). Report the score as partial context in that case — see
+[Onyx Evidence Contract](../architecture/onyx-evidence-contract.md).
 
 ### `GET /health` — Health check
 
@@ -118,6 +162,6 @@ Returns `{"status": "ok", "version": "0.2.0"}`.
 Both endpoints return character offsets for clickable highlighting:
 
 - **`claims[].span`**: `{start, end}` offsets in the original answer text
-- **`results[].evidence_span`**: `{start, end}` offsets in the source document text
+- **`results[].evidence_spans[]`**: `{quote, start, end, document_index}` — one entry per evidence quote located in a source document
 
 The client can use these to render clickable spans in the answer that link to highlighted evidence in the source documents.

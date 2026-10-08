@@ -46,7 +46,7 @@ flowchart TD
     end
 
     subgraph Alignment["Span Matching & Coordinate Mapping"]
-        AGG --> SPANS["find_evidence_span_in_doc() (spans.py)"]
+        AGG --> SPANS["find_evidence_spans() / find_evidence_span_in_doc() (spans.py)"]
         SPANS --> ADAPT["_to_halloumi_format() (server.py)"]
         ADAPT --> SCORE["Answer Quality Score (0-10)"]
     end
@@ -134,7 +134,7 @@ Maps LLM-generated evidence quotes back to exact character offsets in source doc
 
 - **`Span`**: Character-level `{start, end}` boundaries.
 - **`Claim`**: Represents an atomic assertion with `index`, `text`, `original_text`, and `span`.
-- **`VerificationResult`**: Contains `verdict`, `confidence`, `evidence`, `explanation`, `document_index`, and `evidence_span`.
+- **`VerificationResult`**: Contains `verdict`, `confidence`, `evidence` (list of up to 3 verbatim quotes), `explanation`, `document_index`, and `evidence_spans` (one `EvidenceSpan` per located quote, each with its own `document_index`).
 - **`CheckReport`**: Final report containing `answer_score`, `overall_confidence`, `overall_verdict`, `dimensions`, `claims`, and `hallucination_flags`.
 - **`score_label(score)`**: Helper function classifying 0–10 scores into qualitative categories: `Excellent` (9–10), `Good` (7–8), `Acceptable` (5–6), `Poor` (3–4), `Failing` (1–2), and `No claims` (0).
 
