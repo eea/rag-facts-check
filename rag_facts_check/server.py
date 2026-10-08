@@ -64,11 +64,34 @@ def _load_env() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def normalise_kind(value) -> str | None:
+    """Normalise a declared source kind.
+
+    Only `chunk` (the full text the answer was written from) and `snippet` (a search
+    blurb, which cannot prove a claim false) are understood; anything else — including
+    a client that sends nothing — is `None`, meaning "unknown", which must not be
+    reported as thin evidence.
+    """
+    if isinstance(value, str) and value.strip().lower() in ("chunk", "snippet"):
+        return value.strip().lower()
+    return None
+
+
 class DocumentInput(BaseModel):
     """A source document with an optional identifier."""
 
     doc_id: str = Field(..., description="Unique document identifier")
     text: str = Field(..., description="Document text")
+    kind: str | None = Field(
+        None,
+        description="'chunk' = the full text the answer was written from; "
+        "'snippet' = a search blurb, which cannot prove a claim false",
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _normalise_kind(cls, value):
+        return normalise_kind(value)
 
 
 class CheckOptions(BaseModel):
@@ -109,10 +132,7 @@ class HalloumiSource(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def _normalise_kind(cls, value):
-        """Accept only the two known kinds; anything else is 'unknown'."""
-        if isinstance(value, str) and value.strip().lower() in ("chunk", "snippet"):
-            return value.strip().lower()
-        return None
+        return normalise_kind(value)
 
 
 class HalloumiRequest(BaseModel):
@@ -365,6 +385,7 @@ def create_app() -> FastAPI:
 
         # Build documents list for the checker
         documents = [{"doc_id": d.doc_id, "text": d.text} for d in request.documents]
+        source_kinds = [d.kind for d in request.documents]
 
         try:
             batch_size = request.options.batch_size if request.options else None
@@ -373,7 +394,11 @@ def create_app() -> FastAPI:
                 documents=documents,
                 batch_size=batch_size,
             )
-            return report.to_dict()
+            result = report.to_dict()
+            # Same honesty rule as /halloumi/generate: a claim missing from a snippet
+            # proves nothing, so say what kind of text was checked against.
+            result["context_quality"] = _context_quality(source_kinds)
+            return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 

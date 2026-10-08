@@ -278,6 +278,90 @@ class TestHalloumiContextQuality:
         assert quality["snippet_sources"] == 1
 
 
+class TestCheckEndpointContextQuality:
+    """`POST /check` reports the same `context_quality` as `/halloumi/generate`."""
+
+    ANSWER = "Alpha claim. Beta claim."
+
+    @pytest.fixture
+    def stub_client(self, monkeypatch):
+        import rag_facts_check.checker as checker_module
+        from rag_facts_check.models import CheckReport, Claim, VerificationResult
+
+        class StubChecker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def check(self, answer, documents, batch_size=None):
+                return CheckReport(
+                    answer=answer,
+                    answer_score=4.0,
+                    claims=[Claim(text="Alpha claim.", index=1)],
+                    results=[
+                        VerificationResult(
+                            claim="Alpha claim.",
+                            claim_index=1,
+                            verdict="supported",
+                            confidence=0,
+                            evidence="alpha beta",
+                            explanation="Found.",
+                        ),
+                        VerificationResult(
+                            claim="Beta claim.",
+                            claim_index=2,
+                            verdict="not_enough_info",
+                            confidence=0,
+                            evidence="N/A",
+                            explanation="Not in the blurb.",
+                        ),
+                    ],
+                )
+
+        monkeypatch.setattr(checker_module, "RAGFactsChecker", StubChecker)
+        return TestClient(create_app())
+
+    def _post(self, client, documents):
+        response = client.post("/check", json={"answer": self.ANSWER, "documents": documents})
+        assert response.status_code == 200
+        return response.json()
+
+    def test_mixed_kinds_report_partial_context(self, stub_client):
+        data = self._post(
+            stub_client,
+            [
+                {"doc_id": "doc_1", "text": "alpha beta gamma", "kind": "chunk"},
+                {"doc_id": "doc_2", "text": "delta epsilon", "kind": "snippet"},
+            ],
+        )
+        assert data["context_quality"]["level"] == "partial"
+        assert data["context_quality"]["chunk_sources"] == 1
+        assert data["context_quality"]["snippet_sources"] == 1
+
+    def test_all_chunk_kinds_report_full_context(self, stub_client):
+        data = self._post(
+            stub_client,
+            [{"doc_id": "doc_1", "text": "alpha beta", "kind": "chunk"}],
+        )
+        assert data["context_quality"]["level"] == "full"
+
+    def test_missing_kind_reports_unknown(self, stub_client):
+        data = self._post(stub_client, [{"doc_id": "doc_1", "text": "alpha beta"}])
+        assert data["context_quality"]["level"] == "unknown"
+
+    def test_invalid_kind_is_accepted_and_unknown(self, stub_client):
+        """A bad kind is a labelling mistake, not a request error."""
+        data = self._post(
+            stub_client,
+            [{"doc_id": "doc_1", "text": "alpha beta", "kind": "full_text"}],
+        )
+        assert data["context_quality"]["level"] == "unknown"
+
+    def test_report_shape_is_unchanged_apart_from_the_new_key(self, stub_client):
+        data = self._post(stub_client, [{"doc_id": "doc_1", "text": "alpha beta"}])
+        for key in ("overall_verdict", "claims", "results", "dimensions"):
+            assert key in data
+
+
 class TestCheckEndpoint:
     """Tests for the /check endpoint with live LLM.
 

@@ -226,8 +226,8 @@ Implemented in `volto-eea-chatbot`:
 
 ## 7. Fallback ladder the checker follows
 
-`/halloumi/generate` reads `kind` from every structured source and returns a
-`context_quality` block describing what it was actually given:
+Both `/halloumi/generate` and `/check` read `kind` from every structured source and
+return a `context_quality` block describing what they were actually given:
 
 | `level` | when | how to read the score |
 |---|---|---|
@@ -236,9 +236,10 @@ Implemented in `volto-eea-chatbot`:
 | `unknown` | client declared no `kind` | older client; do not infer thin evidence |
 | `none` | no sources survived | cannot verify, not a low score |
 
-In `partial` mode each `not_enough_info` claim additionally carries
-`"context_limited": true`, so the UI can distinguish "the answer may be wrong" from
-"we could not see enough of the answer's sources". The numeric `answer_score` is left
+In `partial` mode each `not_enough_info` claim in the **halloumi** response additionally
+carries `"context_limited": true`, so the UI can distinguish "the answer may be wrong"
+from "we could not see enough of the answer's sources" (`/check` reports the level; its
+per-claim verdicts are already in `results`). The numeric `answer_score` is left
 untouched so runs stay comparable — the label, not the number, carries the caveat.
 
 ## 8. Byte-exact alternatives

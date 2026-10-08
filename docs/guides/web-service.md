@@ -64,8 +64,8 @@ starve the others. See [Onyx Evidence Contract](../architecture/onyx-evidence-co
 {
   "answer": "Paris is the capital of France.",
   "documents": [
-    { "doc_id": "doc_1", "title": "Paris overview", "text": "Paris is the capital..." },
-    { "doc_id": "doc_2", "title": "Eiffel Tower", "text": "The Eiffel Tower..." }
+    { "doc_id": "doc_1", "text": "Paris is the capital...", "kind": "chunk" },
+    { "doc_id": "doc_2", "text": "The Eiffel Tower...", "kind": "snippet" }
   ],
   "options": {
     "num_consistency_runs": 1,
@@ -75,7 +75,13 @@ starve the others. See [Onyx Evidence Contract](../architecture/onyx-evidence-co
 }
 ```
 
-**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_spans` offsets), and `hallucination_flags`.
+| Field | Type | Description |
+|---|---|---|
+| `doc_id` | `str` | Unique document identifier (required) |
+| `text` | `str` | Document text (required) |
+| `kind` | `str \| null` | `chunk` = the full text the answer was written from; `snippet` = a search blurb. Optional; unrecognised values count as unknown. |
+
+**Response:** Full `CheckReport` with `overall_verdict`, `dimensions`, `claims` (with `span` offsets), `results` (with `evidence_spans` offsets), `hallucination_flags`, and a `context_quality` block describing how much of the source text was real (see below).
 
 ### `POST /halloumi/generate` — Halloumi-compatible endpoint
 
