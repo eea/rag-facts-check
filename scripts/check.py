@@ -134,8 +134,13 @@ async def run(dataset_path: str, verbose: bool = False, batch_size: int = 1) -> 
         )
 
     llm = AsyncAPILLM(
-        url, model_name=model, api_key=api_key, chat_mode=True,
-        max_new_tokens=max_tokens, timeout=timeout, extra_body=extra_body,
+        url,
+        model_name=model,
+        api_key=api_key,
+        chat_mode=True,
+        max_new_tokens=max_tokens,
+        timeout=timeout,
+        extra_body=extra_body,
     )
     checker = RAGFactsChecker(
         llm,
@@ -164,11 +169,17 @@ def main() -> None:
         "--verbose", "-v", action="store_true", help="Show per-claim evidence details."
     )
     parser.add_argument(
-        "--output", "-o", type=str, default=None,
+        "--output",
+        "-o",
+        type=str,
+        default=None,
         help="Save results to a JSON file.",
     )
     parser.add_argument(
-        "--batch-size", "-b", type=int, default=1,
+        "--batch-size",
+        "-b",
+        type=int,
+        default=1,
         help="Number of claims to verify in a single LLM call (default: 1).",
     )
     args = parser.parse_args()

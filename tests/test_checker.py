@@ -71,8 +71,7 @@ class TestClaimExtractor:
     def test_parse_claims_standard_format(self):
         extractor = ClaimExtractor.__new__(ClaimExtractor)
         response = (
-            "CLAIM 1: Paris is the capital of France.\n"
-            "CLAIM 2: The Eiffel Tower was built in 1889."
+            "CLAIM 1: Paris is the capital of France.\nCLAIM 2: The Eiffel Tower was built in 1889."
         )
         claims = extractor._parse_claims(response)
         assert len(claims) == 2
@@ -351,16 +350,28 @@ EXPLANATION: No info."""
         claim = Claim(text="Test.", index=1)
         results = [
             VerificationResult(
-                claim="Test.", claim_index=1, verdict="supported",
-                confidence=90, evidence=["E1"], explanation="E1",
+                claim="Test.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence=["E1"],
+                explanation="E1",
             ),
             VerificationResult(
-                claim="Test.", claim_index=1, verdict="supported",
-                confidence=85, evidence=["E2", "E1"], explanation="E2",
+                claim="Test.",
+                claim_index=1,
+                verdict="supported",
+                confidence=85,
+                evidence=["E2", "E1"],
+                explanation="E2",
             ),
             VerificationResult(
-                claim="Test.", claim_index=1, verdict="contradicted",
-                confidence=70, evidence=["E3"], explanation="E3",
+                claim="Test.",
+                claim_index=1,
+                verdict="contradicted",
+                confidence=70,
+                evidence=["E3"],
+                explanation="E3",
             ),
         ]
         agg = verifier._aggregate_consistency(claim, None, results)
@@ -379,8 +390,12 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["First document.", "Second document with evidence."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence=["with evidence"], explanation="Found it.",
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence=["with evidence"],
+            explanation="Found it.",
             document_index=1,
         )
         checker._locate_evidence(result, docs)
@@ -393,8 +408,12 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["First document with evidence.", "Second document."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence=["with evidence"], explanation="Found it.",
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence=["with evidence"],
+            explanation="Found it.",
             document_index=1,  # Wrong! Evidence is in doc 0
         )
         checker._locate_evidence(result, docs)
@@ -409,9 +428,13 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Mangroves store carbon in their soils.", "Peatlands cover 3% of land area."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="supported", confidence=90,
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
             evidence=["Peatlands cover 3% of land area", "Mangroves store carbon"],
-            explanation="Two sources.", document_index=0,
+            explanation="Two sources.",
+            document_index=0,
         )
         checker._locate_evidence(result, docs)
         assert [(s.document_index, s.quote) for s in result.evidence_spans] == [
@@ -423,9 +446,13 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Some document text that doesn't match the evidence."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="supported",
-            confidence=90, evidence=["Paraphrased evidence that won't match"],
-            explanation="Found it.", document_index=0,
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
+            evidence=["Paraphrased evidence that won't match"],
+            explanation="Found it.",
+            document_index=0,
         )
         checker._locate_evidence(result, docs)
         assert result.evidence_spans == []
@@ -434,7 +461,10 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Paris is the capital of France."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="supported", confidence=90,
+            claim="Test.",
+            claim_index=1,
+            verdict="supported",
+            confidence=90,
             evidence=["Paris is the capital of France", "hallucinated quote"],
             explanation="One real, one made up.",
         )
@@ -447,8 +477,12 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         docs = ["Some document."]
         result = VerificationResult(
-            claim="Test.", claim_index=1, verdict="not_enough_info",
-            confidence=60, evidence=[], explanation="No info.",
+            claim="Test.",
+            claim_index=1,
+            verdict="not_enough_info",
+            confidence=60,
+            evidence=[],
+            explanation="No info.",
         )
         checker._locate_evidence(result, docs)
         assert result.evidence_spans == []
@@ -463,8 +497,11 @@ class TestRAGFactsChecker:
         assert isinstance(report, CheckReport)
         assert report.overall_confidence > 0
         assert report.overall_verdict in [
-            "fully_supported", "mostly_supported",
-            "partially_supported", "largely_unsupported", "no_claims",
+            "fully_supported",
+            "mostly_supported",
+            "partially_supported",
+            "largely_unsupported",
+            "no_claims",
         ]
 
     async def test_check_with_hallucination(self, checker):
@@ -554,7 +591,9 @@ class TestRAGFactsChecker:
         )
         assert isinstance(report, CheckReport)
         assert report.overall_verdict in [
-            "fully_supported", "mostly_supported", "partially_supported",
+            "fully_supported",
+            "mostly_supported",
+            "partially_supported",
         ]
 
     async def test_aggregate_dimensions(self, checker):
@@ -661,13 +700,21 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         results = [
             VerificationResult(
-                claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=95, evidence=["Evidence 1."], explanation="Found it.",
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=95,
+                evidence=["Evidence 1."],
+                explanation="Found it.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
-                claim="Claim 2.", claim_index=2, verdict="supported",
-                confidence=90, evidence=["Evidence 2."], explanation="Found it.",
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="supported",
+                confidence=90,
+                evidence=["Evidence 2."],
+                explanation="Found it.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
         ]
@@ -678,13 +725,21 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         results = [
             VerificationResult(
-                claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence=["Evidence."], explanation="Found.",
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence=["Evidence."],
+                explanation="Found.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
-                claim="Claim 2.", claim_index=2, verdict="contradicted",
-                confidence=80, evidence=["Contradiction."], explanation="Wrong.",
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="contradicted",
+                confidence=80,
+                evidence=["Contradiction."],
+                explanation="Wrong.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
         ]
@@ -695,12 +750,20 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         results = [
             VerificationResult(
-                claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=95, evidence=["Paraphrased evidence"], explanation="Found it.",
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=95,
+                evidence=["Paraphrased evidence"],
+                explanation="Found it.",
             ),
             VerificationResult(
-                claim="Claim 2.", claim_index=2, verdict="supported",
-                confidence=90, evidence=["Paraphrased too"], explanation="Found it.",
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="supported",
+                confidence=90,
+                evidence=["Paraphrased too"],
+                explanation="Found it.",
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -710,13 +773,21 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         results = [
             VerificationResult(
-                claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence=["Evidence."], explanation="Found.",
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence=["Evidence."],
+                explanation="Found.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
-                claim="Claim 2.", claim_index=2, verdict="not_enough_info",
-                confidence=60, evidence=[], explanation="No info.",
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="not_enough_info",
+                confidence=60,
+                evidence=[],
+                explanation="No info.",
             ),
         ]
         score = checker._compute_answer_score(results)
@@ -739,18 +810,30 @@ class TestRAGFactsChecker:
         checker = RAGFactsChecker.__new__(RAGFactsChecker)
         results = [
             VerificationResult(
-                claim="Claim 1.", claim_index=1, verdict="supported",
-                confidence=90, evidence=["Evidence."], explanation="Found.",
+                claim="Claim 1.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence=["Evidence."],
+                explanation="Found.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=0, end=10)],
             ),
             VerificationResult(
-                claim="Claim 2.", claim_index=2, verdict="contradicted",
-                confidence=80, evidence=["Contradiction."], explanation="Wrong.",
+                claim="Claim 2.",
+                claim_index=2,
+                verdict="contradicted",
+                confidence=80,
+                evidence=["Contradiction."],
+                explanation="Wrong.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=20, end=30)],
             ),
             VerificationResult(
-                claim="Claim 3.", claim_index=3, verdict="contradicted",
-                confidence=85, evidence=["Another contradiction."], explanation="Wrong again.",
+                claim="Claim 3.",
+                claim_index=3,
+                verdict="contradicted",
+                confidence=85,
+                evidence=["Another contradiction."],
+                explanation="Wrong again.",
                 evidence_spans=[EvidenceSpan(quote="Evidence", start=40, end=50)],
             ),
         ]
@@ -798,7 +881,9 @@ class TestSplitAnswerIntoChunks:
         intro = "## Overview of Climate Measures\n\nKey policy initiatives are summarized below:"
         header = "| Policy | Target |\n|--------|--------|"
         rows = [f"| Measure {i} | Target {i} by 2030 |" for i in range(1, 10)]
-        conclusion = "*Key take-aways:* The EU combines regulation and financing to achieve net-zero."
+        conclusion = (
+            "*Key take-aways:* The EU combines regulation and financing to achieve net-zero."
+        )
 
         text = intro + "\n\n" + header + "\n" + "\n".join(rows) + "\n\n" + conclusion
 
@@ -842,6 +927,7 @@ class TestClaimExtractorChunkingAndDeduplication:
 
     async def test_extract_deduplicates_overlapping_spans(self):
         """When multiple chunks extract claims with identical spans, deduplicate and reindex."""
+
         class FakeLLM:
             async def generate(self, prompt, **kwargs):
                 return (
@@ -849,7 +935,7 @@ class TestClaimExtractorChunkingAndDeduplication:
                     '{"claim": "Paris is capital", "original_text": "Paris is the capital of France."},'
                     '{"claim": "Paris is French capital", "original_text": "Paris is the capital of France."},'
                     '{"claim": "Tower in 1889", "original_text": "Eiffel Tower was built in 1889."}'
-                    ']}'
+                    "]}"
                 )
 
         extractor = ClaimExtractor(FakeLLM())
@@ -872,7 +958,9 @@ class TestClaimExtractorChunkingAndDeduplication:
                 return '{"claims": [{"claim": "Sample claim", "original_text": "Sample text."}]}'
 
         extractor = ClaimExtractor(FakeLLM())
-        long_answer = ("This is a very long text to force chunked extraction.\n\n" * 40) + "Sample text."
+        long_answer = (
+            "This is a very long text to force chunked extraction.\n\n" * 40
+        ) + "Sample text."
         claims = await extractor.extract(long_answer)
 
         assert len(chunk_calls) > 1
@@ -949,4 +1037,3 @@ class TestEvidenceSpanDocumentTracking:
             (0, 0, 22),
             (1, 0, 38),
         ]
-

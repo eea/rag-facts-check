@@ -35,9 +35,7 @@ CLAIM_EXTRACTION_PROMPT = _load("claim-extraction-prompt.txt")
 
 def format_claim_extraction_prompt(text: str) -> str:
     """Build the full claim extraction prompt."""
-    return CLAIM_EXTRACTION_PROMPT.format(
-        system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text
-    )
+    return CLAIM_EXTRACTION_PROMPT.format(system_prompt=CLAIM_EXTRACTION_SYSTEM, text=text)
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +114,8 @@ def format_claim_verification_prompt(
 # Claim Verification — Evidence-First (Multi-Step)
 # ---------------------------------------------------------------------------
 
-CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM = _load(
-    "claim-verification-evidence-first-system.txt"
-)
-CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = _load(
-    "claim-verification-evidence-first-prompt.txt"
-)
+CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM = _load("claim-verification-evidence-first-system.txt")
+CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = _load("claim-verification-evidence-first-prompt.txt")
 
 
 def format_claim_verification_evidence_first_prompt(
@@ -189,10 +183,7 @@ def format_claim_verification_batch_prompt(
         max_chars_per_doc=max_chars_per_doc,
         max_total_chars=max_docs_chars,
     )
-    claims_text = "\n".join(
-        f"  Claim {idx}: {text}"
-        for idx, text in claims
-    )
+    claims_text = "\n".join(f"  Claim {idx}: {text}" for idx, text in claims)
     return CLAIM_VERIFICATION_BATCH_PROMPT.format(
         system_prompt=CLAIM_VERIFICATION_BATCH_SYSTEM,
         documents=formatted_docs,

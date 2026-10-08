@@ -427,7 +427,9 @@ class AsyncAPILLM(LLM):
                 if attempt < self.retries:
                     log.warning(
                         "AsyncAPILLM: attempt %d/%d failed (%s), retrying in 2s",
-                        attempt + 1, self.retries + 1, exc,
+                        attempt + 1,
+                        self.retries + 1,
+                        exc,
                     )
                     await asyncio.sleep(2.0)
         raise last_error  # type: ignore[misc]

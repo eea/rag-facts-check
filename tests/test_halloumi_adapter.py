@@ -38,9 +38,7 @@ def sample_report():
                 evidence=["Paris is the capital."],
                 explanation="Document states this explicitly.",
                 evidence_spans=[
-                    EvidenceSpan(
-                        quote="Paris is the capital.", start=0, end=22, document_index=0
-                    )
+                    EvidenceSpan(quote="Paris is the capital.", start=0, end=22, document_index=0)
                 ],
             ),
             VerificationResult(
@@ -374,13 +372,21 @@ class TestMultipleEvidenceSegments:
             ],
             results=[
                 VerificationResult(
-                    claim="Claim one.", claim_index=1, verdict="supported", confidence=0,
-                    evidence=[shared[0].quote], evidence_spans=shared,
+                    claim="Claim one.",
+                    claim_index=1,
+                    verdict="supported",
+                    confidence=0,
+                    evidence=[shared[0].quote],
+                    evidence_spans=shared,
                     explanation="Same passage.",
                 ),
                 VerificationResult(
-                    claim="Claim two.", claim_index=2, verdict="supported", confidence=0,
-                    evidence=[shared[0].quote], evidence_spans=shared,
+                    claim="Claim two.",
+                    claim_index=2,
+                    verdict="supported",
+                    confidence=0,
+                    evidence=[shared[0].quote],
+                    evidence_spans=shared,
                     explanation="Same passage.",
                 ),
             ],
@@ -529,4 +535,3 @@ class TestContextQuality:
             [None],
         )
         assert all("context_limited" not in claim for claim in result["claims"])
-

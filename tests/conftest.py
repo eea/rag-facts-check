@@ -105,23 +105,22 @@ def _verification_batch_json(verdict: str, prompt: str) -> str:
     import re
 
     # Extract claim indices from the prompt (e.g. "Claim 1: ...", "Claim 2: ...")
-    indices = [
-        int(m)
-        for m in re.findall(r"Claim\s+(\d+):", prompt)
-    ]
+    indices = [int(m) for m in re.findall(r"Claim\s+(\d+):", prompt)]
     # Default to claims 1-3 if no indices found
     if not indices:
         indices = [1, 2, 3]
 
-    return json.dumps([
-        {
-            "claim_index": idx,
-            "verdict": verdict.upper(),
-            "evidence": ["Evidence from documents."],
-            "explanation": "Match found.",
-        }
-        for idx in indices
-    ])
+    return json.dumps(
+        [
+            {
+                "claim_index": idx,
+                "verdict": verdict.upper(),
+                "evidence": ["Evidence from documents."],
+                "explanation": "Match found.",
+            }
+            for idx in indices
+        ]
+    )
 
 
 # ─── LLM Fixtures ────────────────────────────────────────────────────────────

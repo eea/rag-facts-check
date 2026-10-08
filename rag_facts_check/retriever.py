@@ -359,9 +359,7 @@ class LLMEvidenceRetriever(EvidenceRetriever):
         super().__init__(chunk_size=chunk_size, top_k=top_k)
         self.llm = llm
 
-    async def retrieve(
-        self, claim: str, chunks: list[DocumentChunk]
-    ) -> list[DocumentChunk]:
+    async def retrieve(self, claim: str, chunks: list[DocumentChunk]) -> list[DocumentChunk]:
         """Use the LLM to select relevant chunks for a claim.
 
         Args:
@@ -406,11 +404,7 @@ class LLMEvidenceRetriever(EvidenceRetriever):
 
         # Map IDs back to chunks, respecting top_k
         id_to_chunk = {i: chunk for i, chunk in enumerate(chunks)}
-        result = [
-            id_to_chunk[iid]
-            for iid in selected_ids[: self.top_k]
-            if iid in id_to_chunk
-        ]
+        result = [id_to_chunk[iid] for iid in selected_ids[: self.top_k] if iid in id_to_chunk]
 
         # Fallback: if the LLM returned nothing, return the first top_k chunks
         if not result:
@@ -430,6 +424,7 @@ class LLMEvidenceRetriever(EvidenceRetriever):
                 discarded, preventing years/percentages from being
                 mistaken for chunk indices.
         """
+
         def _in_range(n: int) -> bool:
             return max_id is None or (0 <= n <= max_id)
 
