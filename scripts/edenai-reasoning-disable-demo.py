@@ -91,16 +91,13 @@ def main() -> int:
             elapsed = time.time() - t0
             msg = data["choices"][0]["message"]
             reasoning = msg.get("reasoning_content")
-            details = (
-                (data.get("usage") or {}).get("completion_tokens_details") or {}
-            )
+            details = (data.get("usage") or {}).get("completion_tokens_details") or {}
             r_tokens = details.get("reasoning_tokens")
-            if reasoning:
-                verdict = "STILL THINKING"
-            else:
-                verdict = "no thinking"
-            print(f"{label:34} {elapsed:5.1f}s  reasoning_tokens={r_tokens!s:>5}"
-                  f"  reasoning_content={'yes' if reasoning else 'no'}  -> {verdict}")
+            verdict = "STILL THINKING" if reasoning else "no thinking"
+            print(
+                f"{label:34} {elapsed:5.1f}s  reasoning_tokens={r_tokens!s:>5}"
+                f"  reasoning_content={'yes' if reasoning else 'no'}  -> {verdict}"
+            )
             results.append((label, is_off_value, verdict == "no thinking"))
         except urllib.error.HTTPError as e:
             body = e.read().decode()[:200]
@@ -111,9 +108,9 @@ def main() -> int:
             results.append((label, is_off_value, None))
 
     print("=" * 78)
-    off_values = [(l, ok) for l, is_off, ok in results if is_off]
-    failures = [l for l, ok in off_values if ok is False]
-    errors = [l for l, is_off, ok in results if is_off and ok is None]
+    off_values = [(label, ok) for label, is_off, ok in results if is_off]
+    failures = [label for label, ok in off_values if ok is False]
+    errors = [label for label, is_off, ok in results if is_off and ok is None]
 
     print("RESULT")
     print("-" * 78)
@@ -121,15 +118,15 @@ def main() -> int:
         print("No disable test could be evaluated. See errors above.")
         return 2
     if failures:
-        for l in failures:
-            print(f"  [DOC INVALID] {l}: accepted by the API, but the model")
-            print(f"                still produced reasoning (reasoning_content /")
-            print(f"                reasoning_tokens present in the response).")
+        for label in failures:
+            print(f"  [DOC INVALID] {label}: accepted by the API, but the model")
+            print("                still produced reasoning (reasoning_content /")
+            print("                reasoning_tokens present in the response).")
         print()
         print("Conclusion: the documented 'disable'/'none' values are silently")
         print("ignored for this model; reasoning cannot be turned off per request.")
         return 1
-    if errors and not [l for l, ok in off_values if ok]:
+    if errors and not [label for label, ok in off_values if ok]:
         print("Only errors, no successful disable tests. Re-run to confirm.")
         return 2
     print("All documented disable values worked as documented (no thinking).")
