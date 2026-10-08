@@ -55,6 +55,15 @@ The current test suite contains **190 tests** with a **100% pass rate**:
   ```bash
   pytest -m llm
   ```
+- `@pytest.mark.live` — Tests requiring a live **Onyx** deployment (`ONYX_URL`,
+  `ONYX_API_KEY`). Skipped by default like `llm`. Run with:
+  ```bash
+  pytest -m live
+  ```
+  `tests/test_live_evidence_pipeline.py` pins the evidence chain against the real
+  deployment: `GET /document/chunk-info` returns the text the blurbs hide, the corpus
+  reaches `format_documents` untruncated, and snippet-only sources are labelled as
+  partial context. It skips rather than fails when the credentials are absent.
 
 ---
 

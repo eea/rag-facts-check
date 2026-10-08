@@ -158,9 +158,10 @@ Design constraints:
 3. **Gateway rate limits.** A gateway in front of `aihub` (not Onyx — its 429 body is
    not in the Onyx codebase) throttles at roughly 30 req/s. 8 workers × 38 requests
    produced 4–10 failures; **one retry after 1s clears every 429**. Keep workers ≤4.
-4. **The Onyx web UI does not use this endpoint**, so it is internal — pin it with an
-   integration test so an Onyx upgrade breaks loudly instead of silently degrading
-   fact-check scores.
+4. **The Onyx web UI does not use this endpoint**, so it is internal. It is pinned by
+   `tests/test_live_evidence_pipeline.py` (`pytest -m live`), which fails loudly if an
+   Onyx upgrade removes the endpoint, reindexes the chunks away, or shrinks the text —
+   instead of silently degrading fact-check scores.
 
 ### Measured (2026-10-07, `https://aihub.eea.europa.eu`)
 

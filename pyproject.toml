@@ -46,6 +46,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "llm: tests that require a live LLM connection",
+    "live: tests that require a live Onyx deployment (ONYX_URL / ONYX_API_KEY)",
 ]
-addopts = ["-v", "--tb=short", "-m", "not llm"]
+addopts = ["-v", "--tb=short", "-m", "not llm and not live"]
 asyncio_mode = "auto"
