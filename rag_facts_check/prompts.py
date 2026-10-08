@@ -82,17 +82,29 @@ CLAIM_VERIFICATION_SYSTEM = _load("claim-verification-system.txt")
 CLAIM_VERIFICATION_PROMPT = _load("claim-verification-prompt.txt")
 
 
-def format_claim_verification_prompt(claim: str, documents: list[str]) -> str:
+def format_claim_verification_prompt(
+    claim: str,
+    documents: list[str],
+    max_docs_chars: int = 100000,
+    max_chars_per_doc: int = 10000,
+) -> str:
     """Build the full claim verification prompt.
 
     Args:
         claim: The claim text to verify.
         documents: List of document strings.
+        max_docs_chars: Total character budget for all documents.
+        max_chars_per_doc: Fairness cap per document, applied only when the
+            corpus does not fit in ``max_docs_chars``.
 
     Returns:
         Formatted prompt string.
     """
-    formatted_docs = format_documents(documents)
+    formatted_docs = format_documents(
+        documents,
+        max_chars_per_doc=max_chars_per_doc,
+        max_total_chars=max_docs_chars,
+    )
     return CLAIM_VERIFICATION_PROMPT.format(
         system_prompt=CLAIM_VERIFICATION_SYSTEM,
         claim=claim,
@@ -113,7 +125,10 @@ CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT = _load(
 
 
 def format_claim_verification_evidence_first_prompt(
-    claim: str, documents: list[str]
+    claim: str,
+    documents: list[str],
+    max_docs_chars: int = 100000,
+    max_chars_per_doc: int = 10000,
 ) -> str:
     """Build the evidence-first multi-step verification prompt.
 
@@ -124,11 +139,18 @@ def format_claim_verification_evidence_first_prompt(
     Args:
         claim: The claim text to verify.
         documents: List of document strings.
+        max_docs_chars: Total character budget for all documents.
+        max_chars_per_doc: Fairness cap per document, applied only when the
+            corpus does not fit in ``max_docs_chars``.
 
     Returns:
         Formatted prompt string.
     """
-    formatted_docs = format_documents(documents)
+    formatted_docs = format_documents(
+        documents,
+        max_chars_per_doc=max_chars_per_doc,
+        max_total_chars=max_docs_chars,
+    )
     return CLAIM_VERIFICATION_EVIDENCE_FIRST_PROMPT.format(
         system_prompt=CLAIM_VERIFICATION_EVIDENCE_FIRST_SYSTEM,
         claim=claim,
@@ -147,17 +169,26 @@ CLAIM_VERIFICATION_BATCH_PROMPT = _load("claim-verification-batch-prompt.txt")
 def format_claim_verification_batch_prompt(
     claims: list[tuple[int, str]],
     documents: list[str] | list[dict[str, str]],
+    max_docs_chars: int = 100000,
+    max_chars_per_doc: int = 10000,
 ) -> str:
     """Build a batch verification prompt for multiple claims.
 
     Args:
         claims: List of (claim_index, claim_text) tuples.
         documents: List of source document strings or dicts.
+        max_docs_chars: Total character budget for all documents.
+        max_chars_per_doc: Fairness cap per document, applied only when the
+            corpus does not fit in ``max_docs_chars``.
 
     Returns:
         Formatted prompt string.
     """
-    formatted_docs = format_documents(documents)
+    formatted_docs = format_documents(
+        documents,
+        max_chars_per_doc=max_chars_per_doc,
+        max_total_chars=max_docs_chars,
+    )
     claims_text = "\n".join(
         f"  Claim {idx}: {text}"
         for idx, text in claims
@@ -185,7 +216,10 @@ def format_documents(
         documents: List of document strings, or list of dicts with
             ``{"text": ..., "title": ...}`` entries. When dicts are
             provided, the title is included as a header.
-        max_chars_per_doc: Maximum characters per document (truncated).
+        max_chars_per_doc: Fairness cap per document. Only applied when the
+            corpus as a whole does not fit in ``max_total_chars`` — a source
+            that fits inside the total budget is passed whole, because cutting
+            it hides evidence the answer was written from.
         max_total_chars: Maximum total characters across all documents.
 
     Returns:
@@ -194,25 +228,30 @@ def format_documents(
     if not documents:
         return "(No source documents provided)"
 
+    texts = [doc["text"] if isinstance(doc, dict) else doc for doc in documents]
+    # The per-document cap exists so that one huge source cannot starve the
+    # others. When the whole corpus already fits the total budget, that guard
+    # is unnecessary and would only hide evidence.
+    corpus_chars = sum(len(t) for t in texts)
+    per_doc_limit = max_chars_per_doc if corpus_chars > max_total_chars else None
+
     parts = []
     total_chars = 0
 
-    for i, doc in enumerate(documents):
+    for i, (doc, text) in enumerate(zip(documents, texts, strict=True)):
         if total_chars >= max_total_chars:
             parts.append("\n[Remaining documents truncated to fit context window]")
             break
 
         if isinstance(doc, dict):
-            text = doc["text"]
             title = doc.get("title")
             header = f"Document {i + 1}: {title}" if title else f"Document {i + 1}:"
         else:
-            text = doc
             header = f"Document {i + 1}:"
 
-        # Truncate individual document
-        if len(text) > max_chars_per_doc:
-            text = text[:max_chars_per_doc] + "... [truncated]"
+        # Truncate individual document, but only when the corpus overflows
+        if per_doc_limit is not None and len(text) > per_doc_limit:
+            text = text[:per_doc_limit] + "... [truncated]"
 
         remaining = max_total_chars - total_chars
         if len(text) > remaining:

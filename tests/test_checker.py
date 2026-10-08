@@ -193,6 +193,47 @@ class TestClaimVerifier:
         result = await verifier.verify(claim, docs)
         assert result.verdict == "supported"
 
+    # ── Source budget tests ──
+
+    async def test_verify_sends_long_sources_when_corpus_fits_budget(self, mock_llm):
+        """max_docs_chars / max_chars_per_doc must reach the prompt.
+
+        The chatbot sends four Onyx chunk documents of 8k-12k characters. They
+        fit the 100k total budget, so none of them may be cut — that cut is what
+        made supported claims look unverifiable.
+        """
+        verifier = ClaimVerifier(mock_llm, max_docs_chars=100000, max_chars_per_doc=10000)
+        claim = Claim(text="Paris is the capital of France.", index=1)
+        docs = ["Paris is the capital of France. " + "x" * 12000]
+        await verifier.verify(claim, docs)
+
+        prompt = mock_llm.generate.call_args.args[0]
+        assert "x" * 12000 in prompt
+        assert "[truncated]" not in prompt
+
+    async def test_verify_truncates_when_corpus_overflows_budget(self, mock_llm):
+        """With a tight budget the fairness cap must still apply."""
+        verifier = ClaimVerifier(mock_llm, max_docs_chars=1000, max_chars_per_doc=500)
+        claim = Claim(text="Paris is the capital of France.", index=1)
+        docs = ["Paris is the capital of France. " + "x" * 12000]
+        await verifier.verify(claim, docs)
+
+        prompt = mock_llm.generate.call_args.args[0]
+        assert "x" * 12000 not in prompt
+        assert "[truncated]" in prompt
+        assert prompt.count("x") <= 500
+
+    async def test_verify_batch_sends_long_sources_when_corpus_fits(self, mock_llm):
+        """Batch verification skips per-claim chunk narrowing, so it is the path
+        where the source budget actually binds."""
+        verifier = ClaimVerifier(mock_llm, batch_size=5, max_docs_chars=100000)
+        claims = [Claim(text="Paris is the capital of France.", index=1)]
+        docs = ["Paris is the capital of France. " + "y" * 12000]
+        await verifier.verify_batch(claims, docs)
+
+        prompt = mock_llm.generate.call_args.args[0]
+        assert "y" * 12000 in prompt
+
     # ── Parser tests (no LLM needed) ──
 
     def test_parse_result_supported(self):

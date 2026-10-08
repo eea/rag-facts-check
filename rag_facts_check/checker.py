@@ -529,10 +529,16 @@ class ClaimVerifier:
         if self.verification_agent is not None:
             return await self._verify_with_agent(claim, documents)
 
+        budget = {
+            "max_docs_chars": self.max_docs_chars,
+            "max_chars_per_doc": self.max_chars_per_doc,
+        }
         if self.evidence_first:
-            prompt = format_claim_verification_evidence_first_prompt(claim.text, documents)
+            prompt = format_claim_verification_evidence_first_prompt(
+                claim.text, documents, **budget
+            )
         else:
-            prompt = format_claim_verification_prompt(claim.text, documents)
+            prompt = format_claim_verification_prompt(claim.text, documents, **budget)
 
         response = await self.llm.generate(
             prompt,
@@ -546,7 +552,11 @@ class ClaimVerifier:
         """Verify a claim using the atomic agent with structured output."""
         from .agents import VerificationInput
 
-        formatted_docs = format_documents(documents)
+        formatted_docs = format_documents(
+            documents,
+            max_chars_per_doc=self.max_chars_per_doc,
+            max_total_chars=self.max_docs_chars,
+        )
         self.verification_agent.reset_history()
         input_schema = VerificationInput(claim=claim.text, documents=formatted_docs)
         result = await self.verification_agent.run_async(input_schema)
@@ -784,7 +794,12 @@ class ClaimVerifier:
     ) -> list[VerificationResult]:
         """Verify a single batch of claims in one LLM call."""
         indexed_claims = [(c.index, c.text) for c in claims]
-        prompt = format_claim_verification_batch_prompt(indexed_claims, documents)
+        prompt = format_claim_verification_batch_prompt(
+            indexed_claims,
+            documents,
+            max_docs_chars=self.max_docs_chars,
+            max_chars_per_doc=self.max_chars_per_doc,
+        )
 
         # Use larger max_new_tokens for batch responses (more claims = more output,
         # and each claim may carry up to 2 verbatim quotes).

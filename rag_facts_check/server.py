@@ -50,6 +50,8 @@ def _load_env() -> dict[str, str]:
         "LLM_TIMEOUT",
         "LLM_EXTRA_BODY",
         "LLM_DISABLE_REASONING",
+        "CHECKER_MAX_DOCS_CHARS",
+        "CHECKER_MAX_CHARS_PER_DOC",
     ):
         value = os.environ.get(key)
         if value:
@@ -239,6 +241,12 @@ def create_app() -> FastAPI:
                 temperature=temperature,
                 max_new_tokens=max_tokens,
                 max_extraction_tokens=max_tokens,
+                # Source budgets. The chatbot now sends real Onyx chunk text
+                # (a few thousand characters per document), so the corpus can
+                # legitimately exceed the old per-document cap; truncating there
+                # hides the evidence a claim would have been matched against.
+                max_docs_chars=int(env.get("CHECKER_MAX_DOCS_CHARS", "100000")),
+                max_chars_per_doc=int(env.get("CHECKER_MAX_CHARS_PER_DOC", "10000")),
             )
         return _checker
 

@@ -41,6 +41,19 @@ LLM_DISABLE_REASONING=1
 honoured by vLLM and llama.cpp server), `reasoning_effort` (`reasoning_effort: "none"`), or `both`.
 `LLM_EXTRA_BODY` still works for endpoint-specific tuning and overrides the flag on conflicting keys.
 
+Source budgets are also read from the environment:
+
+```env
+# Total characters of source text the judge may see across all documents
+CHECKER_MAX_DOCS_CHARS=100000
+# Fairness cap per document — applied only when the corpus does not fit the total
+CHECKER_MAX_CHARS_PER_DOC=10000
+```
+
+A document that fits inside `CHECKER_MAX_DOCS_CHARS` is passed whole. The per-document
+cap only kicks in when the corpus overflows the total, so one very long source cannot
+starve the others. See [Onyx Evidence Contract](../architecture/onyx-evidence-contract.md#character-budgets).
+
 ## Endpoints
 
 ### `POST /check` — Full fact-checking report

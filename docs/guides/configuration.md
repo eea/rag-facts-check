@@ -39,7 +39,7 @@ checker = RAGFactsChecker(
 | `max_new_tokens` | `512` | Maximum tokens for LLM generation (verification phase) |
 | `max_extraction_tokens` | `2048` | Maximum tokens for claim extraction (allows thorough decomposition) |
 | `max_docs_chars` | `100000` | Total document characters before truncation |
-| `max_chars_per_doc` | `10000` | Per-document character limit |
+| `max_chars_per_doc` | `10000` | Fairness cap per document — applied only when the corpus exceeds `max_docs_chars`, so one huge source cannot starve the others. Sources that fit the total budget are passed whole. |
 | `num_consistency_runs` | `1` | Number of self-consistency verification runs |
 | `evidence_first` | `True` | Use evidence-first multi-step prompting |
 | `use_evidence_retrieval` | `True` | Enable evidence retrieval (LLM-based by default) |

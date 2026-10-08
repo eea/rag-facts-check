@@ -193,18 +193,25 @@ expansion exactly; ±5 doubles the corpus for the same coverage on this example.
 
 ### Character budgets
 
-`RAGFactsChecker` truncates each source at `max_chars_per_doc = 10000` and the whole
-set at `max_docs_chars = 100000` (`prompts.py:format_documents`, see
-[Configuration](../guides/configuration.md)). Against those limits:
+Batch verification (the default, `batch_size=20`, which is what `/halloumi/generate`
+uses) skips per-claim chunk narrowing and sends **every source whole**, so the source
+budget is what decides how much of this evidence the judge actually sees.
 
-| window | chars/doc | truncated by `max_chars_per_doc` |
-|---|---|---|
-| ±2 | 7.9k–12.1k | 2 of 4 documents, ~9% of the corpus |
-| ±5 | 12.6k–25.1k | all 4 documents, **47% of the corpus** |
+`format_documents` caps the corpus at `max_docs_chars = 100000` and applies
+`max_chars_per_doc = 10000` as a **fairness guard only** — it kicks in when the corpus
+overflows the total, so one huge source cannot starve the others. A corpus that fits is
+passed whole. Both are env-tunable on the server (`CHECKER_MAX_DOCS_CHARS`,
+`CHECKER_MAX_CHARS_PER_DOC`); see [Configuration](../guides/configuration.md).
 
-So ±2 is nearly free under the current budget, while ±5 requires raising
-`max_chars_per_doc` (or splitting each document's chunks into separate sources)
-before the extra evidence is actually seen by the judge.
+| window | corpus | vs `max_docs_chars` | truncated |
+|---|---|---|---|
+| ±2 | 40,073 chars | 40% | nothing |
+| ±5 | 76,122 chars | 76% | nothing |
+
+So the whole ±5 expansion already fits, and the binding constraint is the total budget
+(100k characters ≈ 20k tokens), not the per-document cap. Widening beyond ±5, or
+raising `MAX_CHUNKS_FED_TO_CHAT` in Onyx, is what would force `CHECKER_MAX_DOCS_CHARS`
+up — with a directly proportional cost in judge latency and tokens.
 
 ## 6. Frontend contract
 
