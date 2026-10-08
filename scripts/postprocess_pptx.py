@@ -27,9 +27,7 @@ def process_slide_xml(xml_content: str) -> str:
         res = []
         if before:
             res.append(f'<a:r><a:t xml:space="preserve">{before}</a:t></a:r>')
-        res.append(
-            f'<a:r><a:rPr sz="1300"/><a:t xml:space="preserve"> {small.strip()}</a:t></a:r>'
-        )
+        res.append(f'<a:r><a:rPr sz="1300"/><a:t xml:space="preserve"> {small.strip()}</a:t></a:r>')
         if after:
             res.append(f'<a:r><a:t xml:space="preserve">{after}</a:t></a:r>')
         return "".join(res)
