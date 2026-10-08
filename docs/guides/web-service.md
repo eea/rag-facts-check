@@ -102,6 +102,7 @@ Sources accept either plain strings or structured objects. Structured sources
 | `title` | `str \| null` | Document title or semantic identifier |
 | `source_type` | `str \| null` | Source type (e.g. `web`, `file`) |
 | `link` | `str \| null` | Source URL |
+| `kind` | `str \| null` | `chunk` = the full text the answer was written from; `snippet` = a search blurb. Anything else counts as unknown. |
 
 Plain strings are still accepted for backward compatibility but the LLM will
 not have document title context for verification.
@@ -110,6 +111,7 @@ not have document title context for verification.
 
 ```json
 {
+  "answer_score": 7.5,
   "claims": [
     {
       "startOffset": 0,
@@ -121,12 +123,29 @@ not have document title context for verification.
   ],
   "segments": {
     "0": { "startOffset": 0, "endOffset": 22 }
+  },
+  "context_quality": {
+    "level": "full",
+    "sources": 2,
+    "chunk_sources": 2,
+    "snippet_sources": 0,
+    "unknown_sources": 0,
+    "note": null
   }
 }
 ```
 
 Claim scores are categorical: `1.0` (supported), `0.4` (not enough info),
 `0.0` (contradicted). The frontend renders these as `High`, `Low`, `Failed`.
+
+**Context quality.** A `snippet` source is a ~600-character search blurb, so a claim
+that does not appear in it proves nothing — the answer was written from full chunk
+text. When any source is a snippet, `context_quality.level` is `partial` and every
+`not_enough_info` claim additionally carries `"context_limited": true`, meaning that
+verdict may be an artifact of thin sources rather than a real gap in the answer. Levels:
+`full` (all chunk text), `partial` (at least one snippet), `unknown` (client declared
+nothing), `none` (no sources). Report the score as partial context in that case — see
+[Onyx Evidence Contract](../architecture/onyx-evidence-contract.md).
 
 ### `GET /health` — Health check
 

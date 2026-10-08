@@ -3,7 +3,11 @@
 import pytest
 
 from rag_facts_check.models import CheckReport, Claim, EvidenceSpan, Span, VerificationResult
-from rag_facts_check.server import _find_source_index, _to_halloumi_format
+from rag_facts_check.server import (
+    _context_quality,
+    _find_source_index,
+    _to_halloumi_format,
+)
 
 
 @pytest.fixture
@@ -126,7 +130,10 @@ class TestToHalloumiFormat:
             overall_verdict="no_claims",
         )
         result = _to_halloumi_format(report, [])
-        assert result == {"answer_score": 0.0, "claims": [], "segments": {}}
+        assert result["answer_score"] == 0.0
+        assert result["claims"] == []
+        assert result["segments"] == {}
+        assert result["context_quality"]["level"] == "none"
 
     def test_claim_without_span_uses_full_answer_range(self):
         """Claims without span info (LLM paraphrased) should use the full answer range."""
@@ -415,4 +422,111 @@ class TestFindSourceIndex:
     def test_find_source_index_not_found(self):
         sources = ["Source A.", "Source B."]
         assert _find_source_index("completely absent evidence quote", sources) is None
+
+
+def _supported_and_nei_report():
+    """One supported claim and one 'not enough information' claim."""
+    return CheckReport(
+        answer="Claim one. Claim two.",
+        overall_confidence=50.0,
+        overall_verdict="partially_supported",
+        claims=[
+            Claim(text="Claim one.", index=1, span=Span(start=0, end=10)),
+            Claim(text="Claim two.", index=2, span=Span(start=11, end=21)),
+        ],
+        results=[
+            VerificationResult(
+                claim="Claim one.",
+                claim_index=1,
+                verdict="supported",
+                confidence=90,
+                evidence="Source text.",
+                explanation="Found.",
+            ),
+            VerificationResult(
+                claim="Claim two.",
+                claim_index=2,
+                verdict="not_enough_info",
+                confidence=0,
+                evidence="N/A",
+                explanation="No info.",
+            ),
+        ],
+    )
+
+
+class TestContextQuality:
+    """The ``kind`` a client sends must surface as an honest context label.
+
+    A snippet is a ~600-character search blurb. A claim missing from a blurb proves
+    nothing, so a low score computed over snippets has to be labelled as partial
+    context instead of read as a hallucination verdict.
+    """
+
+    def test_all_chunk_sources_are_full_context(self):
+        quality = _context_quality(["chunk", "chunk"])
+        assert quality["level"] == "full"
+        assert quality["chunk_sources"] == 2
+        assert quality["note"] is None
+
+    def test_any_snippet_makes_context_partial(self):
+        quality = _context_quality(["chunk", "snippet", "snippet"])
+        assert quality["level"] == "partial"
+        assert quality["chunk_sources"] == 1
+        assert quality["snippet_sources"] == 2
+        assert "2 of 3" in quality["note"]
+
+    def test_undeclared_kinds_are_unknown(self):
+        quality = _context_quality([None, "chunk"])
+        assert quality["level"] == "unknown"
+        assert quality["unknown_sources"] == 1
+
+    def test_no_sources_reports_none(self):
+        quality = _context_quality([])
+        assert quality["level"] == "none"
+        assert quality["sources"] == 0
+
+    def test_response_carries_context_quality(self):
+        result = _to_halloumi_format(
+            _supported_and_nei_report(),
+            ["Source text."],
+            "Claim one. Claim two.",
+            ["chunk", "snippet"],
+        )
+        assert result["context_quality"]["level"] == "partial"
+
+    def test_response_without_kinds_is_unknown(self):
+        result = _to_halloumi_format(
+            _supported_and_nei_report(), ["Source text."], "Claim one. Claim two."
+        )
+        assert result["context_quality"]["level"] == "unknown"
+
+    def test_not_enough_info_is_context_limited_over_snippets(self):
+        result = _to_halloumi_format(
+            _supported_and_nei_report(),
+            ["Source text."],
+            "Claim one. Claim two.",
+            ["snippet"],
+        )
+        assert "context_limited" not in result["claims"][0]  # supported
+        assert result["claims"][1]["context_limited"] is True  # not_enough_info
+
+    def test_full_context_does_not_flag_claims(self):
+        result = _to_halloumi_format(
+            _supported_and_nei_report(),
+            ["Source text."],
+            "Claim one. Claim two.",
+            ["chunk", "chunk"],
+        )
+        assert all("context_limited" not in claim for claim in result["claims"])
+
+    def test_unknown_context_does_not_flag_claims(self):
+        """Unknown means an older client, not known-thin evidence."""
+        result = _to_halloumi_format(
+            _supported_and_nei_report(),
+            ["Source text."],
+            "Claim one. Claim two.",
+            [None],
+        )
+        assert all("context_limited" not in claim for claim in result["claims"])
 

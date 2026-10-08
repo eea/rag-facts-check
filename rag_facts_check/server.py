@@ -16,7 +16,7 @@ import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .llm import reasoning_disable_params
 from .spans import find_evidence_span_in_doc, merge_overlapping_spans
@@ -100,6 +100,19 @@ class HalloumiSource(BaseModel):
     title: str | None = Field(None, description="Document title or semantic identifier")
     source_type: str | None = Field(None, description="Source type (web, file, etc.)")
     link: str | None = Field(None, description="Source URL")
+    kind: str | None = Field(
+        None,
+        description="'chunk' = the full text the answer was written from; "
+        "'snippet' = a search blurb, which cannot prove a claim false",
+    )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _normalise_kind(cls, value):
+        """Accept only the two known kinds; anything else is 'unknown'."""
+        if isinstance(value, str) and value.strip().lower() in ("chunk", "snippet"):
+            return value.strip().lower()
+        return None
 
 
 class HalloumiRequest(BaseModel):
@@ -267,8 +280,9 @@ def create_app() -> FastAPI:
         returns a response in halloumi's format so the existing frontend
         components work without changes.
 
-        Request: {"answer": "...", "sources": ["doc1...", "doc2..."]}
-        Response: {"answer_score": 0-10, "claims": [...], "segments": {...}}
+        Request: {"answer": "...", "sources": ["doc1...", {"text": "doc2...", "kind": "chunk"}]}
+        Response: {"answer_score": 0-10, "claims": [...], "segments": {...},
+                   "context_quality": {"level": "full|partial|unknown|none", ...}}
         """
         checker = _get_checker()
 
@@ -278,6 +292,7 @@ def create_app() -> FastAPI:
         # drop here shifts every segment of every source after it.
         documents = []
         raw_texts: list[str] = []  # for _to_halloumi_format span mapping
+        source_kinds: list[str | None] = []  # 'chunk' | 'snippet' | None, per kept source
         for i, src in enumerate(request.sources):
             text = src if isinstance(src, str) else (src.text or "")
             if not text.strip():
@@ -294,12 +309,21 @@ def create_app() -> FastAPI:
                     doc["title"] = src.title
                 documents.append(doc)
             raw_texts.append(text)
+            source_kinds.append(None if isinstance(src, str) else src.kind)
 
         log.info(
             "halloumi/generate: answer=%d chars, sources=%d docs (%d non-empty)",
             len(request.answer),
             len(request.sources),
             len(documents),
+        )
+        quality = _context_quality(source_kinds)
+        log.info(
+            "halloumi/generate: context_quality=%s chunks=%d snippets=%d unknown=%d",
+            quality["level"],
+            quality["chunk_sources"],
+            quality["snippet_sources"],
+            quality["unknown_sources"],
         )
 
         try:
@@ -324,7 +348,7 @@ def create_app() -> FastAPI:
                     len(r.evidence),
                     [(s.document_index, s.start, s.end) for s in r.evidence_spans],
                 )
-            return _to_halloumi_format(report, raw_texts, request.answer)
+            return _to_halloumi_format(report, raw_texts, request.answer, source_kinds)
         except Exception as e:
             log.exception("halloumi/generate error")
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -444,7 +468,58 @@ def _joined_evidence_spans(
     return merge_overlapping_spans(joined)
 
 
-def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> dict:
+def _context_quality(kinds: list[str | None]) -> dict:
+    """Describe how much real text the received sources actually carry.
+
+    A ``snippet`` source is a search blurb (~600 characters). The answer was written
+    from full chunk text, so a claim that does not appear in a blurb proves nothing:
+    reporting a low score over snippets without saying so is what turns thin plumbing
+    into a false hallucination verdict. See
+    ``docs/architecture/onyx-evidence-contract.md``.
+
+    Args:
+        kinds: One entry per non-empty source: ``"chunk"``, ``"snippet"`` or ``None``
+            (client did not declare a kind).
+
+    Returns:
+        Dict with ``level`` (``full`` / ``partial`` / ``unknown`` / ``none``), the
+        per-kind counts, and a human-readable ``note`` when the context is not full.
+    """
+    chunks = sum(1 for k in kinds if k == "chunk")
+    snippets = sum(1 for k in kinds if k == "snippet")
+    unknown = sum(1 for k in kinds if k is None)
+
+    if not kinds:
+        level = "none"
+    elif snippets:
+        level = "partial"
+    elif chunks and not unknown:
+        level = "full"
+    else:
+        level = "unknown"
+
+    notes = {
+        "none": "No sources were sent, so nothing could be verified.",
+        "partial": (
+            f"{snippets} of {len(kinds)} sources were search snippets, not full document "
+            "text. Claims reported as 'not enough information' may still be supported by "
+            "text that was never sent."
+        ),
+        "unknown": "Sources did not declare whether they are full text or snippets.",
+    }
+    return {
+        "level": level,
+        "sources": len(kinds),
+        "chunk_sources": chunks,
+        "snippet_sources": snippets,
+        "unknown_sources": unknown,
+        "note": notes.get(level),
+    }
+
+
+def _to_halloumi_format(
+    report, sources: list[str], answer_text: str = "", kinds: list[str | None] | None = None
+) -> dict:
     """Convert a CheckReport to halloumi-compatible response format.
 
     Halloumi format:
@@ -474,7 +549,14 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
     - supported: 1.0
     - not_enough_info: 0.4
     - contradicted: 0.0
+
+    When the sources are known to be snippets (``kinds``), the response also carries
+    ``context_quality`` and marks each ``not_enough_info`` claim as
+    ``context_limited`` — that verdict may be an artifact of thin sources rather than
+    a real gap in the answer.
     """
+    # Sources present but no declared kind means "unknown"; no sources at all means "none".
+    quality = _context_quality(kinds if kinds is not None else [None] * len(sources))
     # Verdict-to-score mapping for per-claim scores
     verdict_scores = {
         "supported": 1.0,
@@ -537,17 +619,21 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         # Extract the claim text from the answer using the span
         claim_string = answer_text[start_offset:end_offset] if claim.span else claim.text
 
-        claims.append(
-            {
-                "claimString": claim_string,
-                "startOffset": start_offset,
-                "endOffset": end_offset,
-                "segmentIds": segment_ids,
-                "score": score,
-                "rationale": result.explanation,
-                "skipped": skipped,
-            }
-        )
+        claim_entry = {
+            "claimString": claim_string,
+            "startOffset": start_offset,
+            "endOffset": end_offset,
+            "segmentIds": segment_ids,
+            "score": score,
+            "rationale": result.explanation,
+            "skipped": skipped,
+        }
+        # A "not enough information" verdict is only trustworthy when the sources
+        # were real document text; over snippets it usually means the text was
+        # simply not sent.
+        if quality["level"] == "partial" and result.verdict == "not_enough_info":
+            claim_entry["context_limited"] = True
+        claims.append(claim_entry)
 
     with_spans = sum(1 for r in report.results if report.claims[r.claim_index - 1].span)
     log.info(
@@ -561,4 +647,5 @@ def _to_halloumi_format(report, sources: list[str], answer_text: str = "") -> di
         "answer_score": report.answer_score,
         "claims": claims,
         "segments": segments,
+        "context_quality": quality,
     }

@@ -224,12 +224,22 @@ Implemented in `volto-eea-chatbot`:
 - Each source carries `kind`: `"chunk"` (real text) or `"snippet"` (blurb fallback).
 - `middleware.js` allowlists `GET /document/chunk-info` on the `_da` proxy.
 
-## 7. Fallback ladder the checker should follow
+## 7. Fallback ladder the checker follows
 
-1. `kind: "chunk"` — verify normally, score 0–10.
-2. `kind: "snippet"` — verify, but report the score as **partial context**; a claim
-   missing from a snippet is not evidence of hallucination.
-3. no sources at all — return an explicit "cannot verify", not a low score.
+`/halloumi/generate` reads `kind` from every structured source and returns a
+`context_quality` block describing what it was actually given:
+
+| `level` | when | how to read the score |
+|---|---|---|
+| `full` | every source is `chunk` text | verify normally, score 0–10 |
+| `partial` | at least one source is a `snippet` | report as **partial context** — a claim missing from a snippet is not evidence of hallucination |
+| `unknown` | client declared no `kind` | older client; do not infer thin evidence |
+| `none` | no sources survived | cannot verify, not a low score |
+
+In `partial` mode each `not_enough_info` claim additionally carries
+`"context_limited": true`, so the UI can distinguish "the answer may be wrong" from
+"we could not see enough of the answer's sources". The numeric `answer_score` is left
+untouched so runs stay comparable — the label, not the number, carries the caveat.
 
 ## 8. Byte-exact alternatives
 
