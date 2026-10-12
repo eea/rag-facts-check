@@ -87,9 +87,10 @@ pipeline {
         node(label: 'docker') {
           // eeacms/gitflow builds + pushes the Docker image, creates the GitHub
           // release, and (when `template` is set) bumps the Rancher catalog.
-          // Needs the eeacms/rag-facts-check Docker Hub repo to exist with push
-          // rights for the eeajenkins credential.
-          withCredentials([string(credentialsId: 'eea-jenkins-token', variable: 'GITHUB_TOKEN'), usernamePassword(credentialsId: 'jekinsdockerhub', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+          // Reuses the 'eeajenkins' Docker Hub credential (same one used by
+          // docker.withRegistry('', 'eeajenkins') above) - 'jekinsdockerhub' used
+          // by other EEA repos does not exist on this Jenkins instance.
+          withCredentials([string(credentialsId: 'eea-jenkins-token', variable: 'GITHUB_TOKEN'), usernamePassword(credentialsId: 'eeajenkins', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
             sh '''docker pull eeacms/gitflow; docker run -i --rm --name="$BUILD_TAG-release" \
               -e GIT_BRANCH="$BRANCH_NAME" \
               -e GIT_NAME="$GIT_NAME" \
